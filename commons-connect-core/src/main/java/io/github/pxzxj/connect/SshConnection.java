@@ -31,7 +31,7 @@ public class SshConnection extends ConnectionBase {
     @Override
     public synchronized void close() {
         try {
-            logout();
+            preDisconnect();
         } catch (Exception e){
             logger.error("logout error ", e);
         }

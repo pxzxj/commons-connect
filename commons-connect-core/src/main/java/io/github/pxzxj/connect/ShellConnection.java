@@ -1,14 +1,12 @@
 package io.github.pxzxj.connect;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ponshine.connection.event.ConnectionClosedEvent;
 import com.pty4j.PtyProcess;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.util.StringUtils;
 
 import java.io.*;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -20,32 +18,29 @@ public class ShellConnection implements Connection {
 
     private final String connectionId;
     private final long createTime;
-    private volatile long lastAccessTime;
+    private volatile long lastSendTime;
     private final ConnectionConfigurer connectionConfigurer;
     private final PtyProcess ptyProcess;
-    private final int pid;
+    private final long pid;
     private final Reader reader;
     private final Writer writer;
 
     private int offset = 0;
-    private StringBuffer fullScreen = new StringBuffer();
-    private final ObjectMapper om = new ObjectMapper();
-
+    private final StringBuffer outputBuffer = new StringBuffer();
+    private String postConnectOutput = "";
     private CommandConfigurer currentCommandConfigurer;
     private CommandResult currentCommandResult;
 
     private Thread outputReaderThread;
-    private Thread keepActiveThread;
-
-    private ApplicationEventPublisher applicationEventPublisher;
+    private Thread keepAliveThread;
 
     public ShellConnection(String connectionId, ConnectionConfigurer connectionConfigurer, PtyProcess ptyProcess) throws UnsupportedEncodingException {
         this.connectionId = connectionId;
         this.createTime = System.currentTimeMillis();
-        this.lastAccessTime = System.currentTimeMillis();
+        this.lastSendTime = System.currentTimeMillis();
         this.connectionConfigurer = connectionConfigurer;
         this.ptyProcess = ptyProcess;
-        this.pid = ptyProcess.getPid();
+        this.pid = ptyProcess.pid();
         this.reader = new InputStreamReader(ptyProcess.getInputStream(), connectionConfigurer.getCharset());
         this.writer = new OutputStreamWriter(ptyProcess.getOutputStream(), connectionConfigurer.getCharset());
         this.currentCommandConfigurer = CommandConfigurerBuilder.newCommandConfigurer("")
@@ -57,8 +52,13 @@ public class ShellConnection implements Connection {
         logger.info("create process success, pid: {}", this.pid);
     }
 
-    public void setApplicationEventPublisher(ApplicationEventPublisher applicationEventPublisher) {
-        this.applicationEventPublisher = applicationEventPublisher;
+    public PtyProcess getPtyProcess() {
+        return ptyProcess;
+    }
+
+    @Override
+    public String getPostConnectOutput() {
+        return postConnectOutput;
     }
 
     public void postConnect() {
@@ -71,12 +71,13 @@ public class ShellConnection implements Connection {
             if(isConnected()){
                 close();
             }
-            throw new GeneralConnectionException("连接失败, 回显内容:" + getFullScreen());
+            throw new GeneralConnectionException("连接失败, 回显内容:" + outputBuffer);
         }
+        postConnectOutput = outputBuffer.toString();
         CommandConfigurer postConnectCommand = connectionConfigurer.getPostConnect();
         if (postConnectCommand != null) {
             if (postConnectCommand.getCommand() == null && postConnectCommand.getCommandFunction() != null) {
-                postConnectCommand.setCommand(postConnectCommand.getCommandFunction().apply(getLastScreen()));
+                postConnectCommand.setCommand(postConnectCommand.getCommandFunction().apply(postConnectOutput));
             }
             CommandResult commandResult = sendCommand(postConnectCommand);
             if (!commandResult.isSuccess()) {
@@ -84,62 +85,47 @@ public class ShellConnection implements Connection {
                     close();
                 }
                 String message = "连接后执行命令失败：" + commandResult.getFailCommand() + "\n回显内容：" + commandResult.getResult();
-                throw new GeneralExecException(message, commandResult);
+                throw new GeneralCommandException(message, commandResult);
             }
+            postConnectOutput += commandResult.getResult();
         }
-        logger.info("host: " + connectionConfigurer.getHost() + ", login output: " + getFullScreen());
-        if(StringUtils.hasLength(connectionConfigurer.getKeepActiveCommand())){
-            keepActiveThread = new Thread(new KeepActiveDaemon());
-            keepActiveThread.setName("KeepActiveDaemon " + pid);
-            keepActiveThread.setDaemon(true);
-            keepActiveThread.start();
+        logger.info("host: " + connectionConfigurer.getHost() + ", login output: " + postConnectOutput);
+        if(StringUtils.isNotEmpty(connectionConfigurer.getKeepAliveCommand())){
+            keepAliveThread = new Thread(new KeepAliveDaemon());
+            keepAliveThread.setName("KeepAliveDaemon " + pid);
+            keepAliveThread.setDaemon(true);
+            keepAliveThread.start();
         }
-    }
-
-    @Override
-    public synchronized void sendString(String command) {
-        sendString(command, CommandConfigurer.BACKSLASH_N);
     }
 
     public synchronized void sendString(String command, String enter) {
         try {
             command += enter;
-            logger.info("host: " + connectionConfigurer.getHost() + ", send command: " + om.writeValueAsString(command));
-            lastAccessTime = System.currentTimeMillis();
+            logger.info("host: " + connectionConfigurer.getHost() + ", send command: " + command);
+            lastSendTime = System.currentTimeMillis();
             writer.write(command);
             writer.flush();
         } catch (IOException e) {
             logger.error("command send fail: " + command, e);
-            throw new GeneralExecException("command send fail: " + command, e);
+            throw new GeneralCommandException("command send fail: " + command, e);
         }
-    }
-
-    @Override
-    public CommandResult sendStringWithResult(String command) {
-        throw new IllegalArgumentException("NOT SUPPORTED METHOD");
-    }
-
-    @Override
-    public CommandResult sendStringWithResult(String command, String waitStr, int maxMilliSeconds) {
-        throw new IllegalArgumentException("NOT SUPPORTED METHOD");
     }
 
     @Override
     public synchronized CommandResult sendCommand(CommandConfigurer commandConfigurer) {
         CommandConfigurer cc = commandConfigurer;
-        if (cc.getCommand() == null) {
-            throw new IllegalArgumentException("first command cannot be null");
-        }
+        Objects.requireNonNull(cc.getCommand(), "first command cannot be null");
         CommandResult commandResult = new CommandResult(commandConfigurer);
-        offset = fullScreen.length();
+        outputBuffer.setLength(0);
         while (cc != null) {
+            offset = outputBuffer.length();
             if (cc.getCommand() == null && cc.getCommandFunction() == null) {
                 throw new IllegalArgumentException("command and commandFunction cannot be null in same time");
             }
             this.currentCommandConfigurer = cc;
             this.currentCommandResult = CommandResult.successfulResult();
             String enter = cc.getEnter();
-            String command = cc.getCommand() != null ? cc.getCommand() : cc.getCommandFunction().apply(fullScreen.substring(offset));
+            String command = cc.getCommand() != null ? cc.getCommand() : cc.getCommandFunction().apply(outputBuffer.substring(offset));
             sendString(command, enter);
             waitForString();
             if(!currentCommandResult.isSuccess() ||
@@ -150,18 +136,12 @@ public class ShellConnection implements Connection {
             }
             cc = cc.getNext();
         }
-        commandResult.setResult(fullScreen.substring(offset));
+        commandResult.setResult(outputBuffer.substring(offset));
         return commandResult;
     }
 
-    @Override
-    public synchronized boolean waitForString(String string, int maxMilliSeconds) {
-        waitForString();
-        return false;
-    }
-
     public synchronized void waitForString() {
-        long startTime = lastAccessTime = System.currentTimeMillis();
+        long startTime = lastSendTime = System.currentTimeMillis();
         int timeoutMilliSeconds = currentCommandConfigurer.getTimeoutMilliSeconds();
         String moreCommand = currentCommandConfigurer.getMoreCommand();
         String moreFlag = currentCommandConfigurer.getMoreFlag();
@@ -169,9 +149,9 @@ public class ShellConnection implements Connection {
             while (System.currentTimeMillis() - startTime < timeoutMilliSeconds && currentCommandResult.getResult() == null) {
                 if (moreFlag != null) {
                     sendString(moreCommand, "");
-                } else if (System.currentTimeMillis() - lastAccessTime > connectionConfigurer.getKeepActiveInterval()) {
-                    lastAccessTime = System.currentTimeMillis();
-                    sendString(connectionConfigurer.getKeepActiveCommand(), "");
+                } else if (System.currentTimeMillis() - lastSendTime > connectionConfigurer.getKeepAliveInterval()) {
+                    lastSendTime = System.currentTimeMillis();
+                    sendString(connectionConfigurer.getKeepAliveCommand(), "");
                 }
                 TimeUnit.MILLISECONDS.sleep(200);
             }
@@ -182,19 +162,16 @@ public class ShellConnection implements Connection {
 
     @Override
     public synchronized void close() {
-        if(applicationEventPublisher != null) {
-            applicationEventPublisher.publishEvent(new ConnectionClosedEvent(this));
-        }
         try {
-            if (connectionConfigurer.getPreLogout() != null) {
-                CommandResult commandResult = this.sendCommand(connectionConfigurer.getPreLogout());
+            if (connectionConfigurer.getPreDisconnect() != null) {
+                CommandResult commandResult = this.sendCommand(connectionConfigurer.getPreDisconnect());
                 logger.info("preLogout result: {}", commandResult.getResult());
             }
             if(outputReaderThread != null) {
                 outputReaderThread.interrupt();
             }
-            if(keepActiveThread != null) {
-                keepActiveThread.interrupt();
+            if(keepAliveThread != null) {
+                keepAliveThread.interrupt();
             }
 
         } catch (Exception e){
@@ -224,28 +201,8 @@ public class ShellConnection implements Connection {
     }
 
     @Override
-    public synchronized long getLastAccessTime() {
-        return this.lastAccessTime;
-    }
-
-    @Override
     public ConnectionConfigurer getConnectionConfigurer() {
         return connectionConfigurer;
-    }
-
-    @Override
-    public String getLastScreen() {
-        return fullScreen.substring(offset);
-    }
-
-    @Override
-    public void cleanScreen() {
-        fullScreen.setLength(0);
-    }
-
-    @Override
-    public String getFullScreen() {
-        return fullScreen.toString();
     }
 
     private class ShellOutputReader implements Runnable {
@@ -260,8 +217,8 @@ public class ShellConnection implements Connection {
                     if(len == -1) {
                         break;
                     }
-                    int fromIndex = fullScreen.length();
-                    fullScreen.append(buffer, 0, len);
+                    int fromIndex = outputBuffer.length();
+                    outputBuffer.append(buffer, 0, len);
                     boolean failed = matchFlags(currentCommandConfigurer.getFailFlags(), fromIndex);
                     boolean success = false;
                     if(!failed) {
@@ -271,7 +228,7 @@ public class ShellConnection implements Connection {
                         if(currentCommandConfigurer.getSuccessFlags() != null || currentCommandConfigurer.getFailFlags() != null) {
                             currentCommandResult.setSuccess(success);
                         }
-                        currentCommandResult.setResult(fullScreen.substring(fromIndex));
+                        currentCommandResult.setResult(outputBuffer.substring(fromIndex));
                     }
                 }
             } catch (IOException e) {
@@ -289,7 +246,7 @@ public class ShellConnection implements Connection {
                 if(fi - flag.length() > offset) {
                     fi = fi - flag.length();
                 }
-                if(fullScreen.indexOf(flag, fi) != -1) {
+                if(outputBuffer.indexOf(flag, fi) != -1) {
                     return true;
                 }
             }
@@ -297,31 +254,31 @@ public class ShellConnection implements Connection {
         }
     }
 
-    private class KeepActiveDaemon implements Runnable {
+    private class KeepAliveDaemon implements Runnable {
 
-        private long lastSendKeepActiveCommandTime = System.currentTimeMillis();
+        private long lastSendKeepAliveCommandTime = System.currentTimeMillis();
 
         @Override
         public void run() {
             logger.info(Thread.currentThread().getName() + " start");
-            CommandConfigurer keepActiveCommand = CommandConfigurerBuilder.newCommandConfigurer(connectionConfigurer.getKeepActiveCommand())
+            CommandConfigurer keepAliveCommand = CommandConfigurerBuilder.newCommandConfigurer(connectionConfigurer.getKeepAliveCommand())
                     .enter("")
-                    .successFlags(connectionConfigurer.getKeepActiveWaitStr())
-                    .timeoutMilliSeconds(connectionConfigurer.getKeepActiveWaitTimeout())
+                    .successFlags(connectionConfigurer.getKeepAliveWaitStr())
+                    .timeoutMilliSeconds(connectionConfigurer.getKeepAliveWaitTimeout())
                     .build();
             try {
 
                 while (!Thread.interrupted()) {
-                    if (System.currentTimeMillis() - lastAccessTime > connectionConfigurer.getKeepActiveInterval() &&
-                            System.currentTimeMillis() - lastSendKeepActiveCommandTime > connectionConfigurer.getKeepActiveInterval()) {
+                    if (System.currentTimeMillis() - lastSendTime > connectionConfigurer.getKeepAliveInterval() &&
+                            System.currentTimeMillis() - lastSendKeepAliveCommandTime > connectionConfigurer.getKeepAliveInterval()) {
                         synchronized (ShellConnection.this){
-                            if (System.currentTimeMillis() - lastAccessTime > connectionConfigurer.getKeepActiveInterval() &&
-                                    System.currentTimeMillis() - lastSendKeepActiveCommandTime > connectionConfigurer.getKeepActiveInterval()) {
-                                long tempLastAccessTime = lastAccessTime;
-                                lastSendKeepActiveCommandTime = System.currentTimeMillis();
-                                CommandResult commandResult = sendCommand(keepActiveCommand);
-                                logger.info("pid: " + pid + ", keepActiveResult: " + commandResult);
-                                lastAccessTime = tempLastAccessTime;
+                            if (System.currentTimeMillis() - lastSendTime > connectionConfigurer.getKeepAliveInterval() &&
+                                    System.currentTimeMillis() - lastSendKeepAliveCommandTime > connectionConfigurer.getKeepAliveInterval()) {
+                                long tempLastSendTime = lastSendTime;
+                                lastSendKeepAliveCommandTime = System.currentTimeMillis();
+                                CommandResult commandResult = sendCommand(keepAliveCommand);
+                                logger.info("pid: " + pid + ", keepAliveResult: " + commandResult);
+                                lastSendTime = tempLastSendTime;
                             }
                         }
                     }

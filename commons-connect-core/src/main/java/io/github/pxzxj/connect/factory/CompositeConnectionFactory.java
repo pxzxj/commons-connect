@@ -1,8 +1,9 @@
 package io.github.pxzxj.connect.factory;
 
-import com.ponshine.connection.Connection;
-import com.ponshine.connection.ConnectionConfigurer;
-import com.ponshine.connection.GeneralConnectionException;
+import io.github.pxzxj.connect.Connection;
+import io.github.pxzxj.connect.ConnectionConfigurer;
+import io.github.pxzxj.connect.ConnectionFactory;
+import io.github.pxzxj.connect.GeneralConnectionException;
 
 import java.util.Arrays;
 import java.util.List;

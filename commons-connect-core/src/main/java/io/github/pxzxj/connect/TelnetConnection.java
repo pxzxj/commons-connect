@@ -12,7 +12,7 @@ public class TelnetConnection extends ConnectionBase {
 
     private final Logger logger = LoggerFactory.getLogger(TelnetConnection.class);
 
-    private TelnetClient telnetClient;
+    private final TelnetClient telnetClient;
 
     public TelnetConnection(String connectionId, ConnectionConfigurer connectionConfigurer, InputStream inputStream, OutputStream outputStream, TelnetClient telnetClient) throws UnsupportedEncodingException {
         super(connectionId, connectionConfigurer, inputStream, outputStream);
@@ -27,7 +27,7 @@ public class TelnetConnection extends ConnectionBase {
     @Override
     public synchronized void close() {
         try {
-            logout();
+            preDisconnect();
         } catch (Exception e) {
             logger.error("logout error ", e);
         }

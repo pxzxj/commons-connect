@@ -5,6 +5,7 @@ import java.util.Map;
 
 public class ConnectionConfigurerBuilder {
 
+    private String id;
     private String type;
     private String host;
     private int port;
@@ -48,6 +49,11 @@ public class ConnectionConfigurerBuilder {
         ConnectionConfigurerBuilder connectionConfigurerBuilder = new ConnectionConfigurerBuilder();
         connectionConfigurerBuilder.type = type;
         return connectionConfigurerBuilder;
+    }
+
+    public ConnectionConfigurerBuilder id(String id) {
+        this.id = id;
+        return this;
     }
 
     public ConnectionConfigurerBuilder host(String host) {
@@ -105,23 +111,23 @@ public class ConnectionConfigurerBuilder {
         return this;
     }
 
-    public ConnectionConfigurerBuilder keepAliveInterval(int keepActiveInterval){
-        this.keepAliveInterval = keepActiveInterval;
+    public ConnectionConfigurerBuilder keepAliveInterval(int keepAliveInterval){
+        this.keepAliveInterval = keepAliveInterval;
         return this;
     }
 
-    public ConnectionConfigurerBuilder keepAliveCommand(String keepActiveCommand){
-        this.keepAliveCommand = keepActiveCommand;
+    public ConnectionConfigurerBuilder keepAliveCommand(String keepAliveCommand){
+        this.keepAliveCommand = keepAliveCommand;
         return this;
     }
 
-    public ConnectionConfigurerBuilder keepAliveWaitStr(String keepActiveWaitStr){
-        this.keepAliveWaitStr = keepActiveWaitStr;
+    public ConnectionConfigurerBuilder keepAliveWaitStr(String keepAliveWaitStr){
+        this.keepAliveWaitStr = keepAliveWaitStr;
         return this;
     }
 
-    public ConnectionConfigurerBuilder keepAliveWaitTimeout(int keepActiveWaitTimeout){
-        this.keepAliveWaitTimeout = keepActiveWaitTimeout;
+    public ConnectionConfigurerBuilder keepAliveWaitTimeout(int keepAliveWaitTimeout){
+        this.keepAliveWaitTimeout = keepAliveWaitTimeout;
         return this;
     }
 
@@ -132,6 +138,7 @@ public class ConnectionConfigurerBuilder {
 
     public ConnectionConfigurer build(){
         ConnectionConfigurer connectionConfigurer = new ConnectionConfigurer();
+        connectionConfigurer.setId(id);
         connectionConfigurer.setType(type);
         connectionConfigurer.setHost(host);
         if(port != 0){

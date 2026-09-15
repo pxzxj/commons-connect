@@ -5,7 +5,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
-public class ConnectionConfigurer implements Serializable {
+public class ConnectionConfigurer {
 
     private static final String DEFAULT_KEEP_ALIVE_COMMAND = " ";
 
@@ -14,6 +14,8 @@ public class ConnectionConfigurer implements Serializable {
     public static final String TYPE_TELNET = "telnet";
 
     public static final String TYPE_SHELL = "shell";
+
+    private String id;
 
     private String type;
     
@@ -70,6 +72,14 @@ public class ConnectionConfigurer implements Serializable {
     private int keepAliveWaitTimeout = 2000;
 
     private Map<String, Object> extAttrs = new HashMap<>();
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
 
     public String getType() {
         return type;

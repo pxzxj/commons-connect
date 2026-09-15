@@ -6,7 +6,7 @@
     <parent>
         <groupId>io.github.pxzxj</groupId>
         <artifactId>commons-connect</artifactId>
-        <version>1.0</version>
+        <version>0.1.0</version>
     </parent>
 
     <artifactId>commons-connect-sdk</artifactId>

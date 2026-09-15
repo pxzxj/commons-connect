@@ -49,7 +49,7 @@ public class ShellConnection implements Connection {
                                                             .timeoutMilliSeconds(connectionConfigurer.getTimeoutMilliSeconds())
                                                             .build();
         this.currentCommandResult = CommandResult.successfulResult();
-        logger.info("create process success, pid: {}", this.pid);
+        logger.info("id: {}, create process success, pid: {}", connectionId, this.pid);
     }
 
     public PtyProcess getPtyProcess() {
@@ -156,7 +156,7 @@ public class ShellConnection implements Connection {
                 TimeUnit.MILLISECONDS.sleep(200);
             }
         } catch (InterruptedException e) {
-            logger.error("", e);
+            logger.error("id: {}", connectionId, e);
         }
     }
 
@@ -165,7 +165,7 @@ public class ShellConnection implements Connection {
         try {
             if (connectionConfigurer.getPreDisconnect() != null) {
                 CommandResult commandResult = this.sendCommand(connectionConfigurer.getPreDisconnect());
-                logger.info("preLogout result: {}", commandResult.getResult());
+                logger.info("id: {}, preLogout result: {}", connectionId, commandResult.getResult());
             }
             if(outputReaderThread != null) {
                 outputReaderThread.interrupt();
@@ -175,13 +175,13 @@ public class ShellConnection implements Connection {
             }
 
         } catch (Exception e){
-            logger.error("logout error ", e);
+            logger.error("id: {}, logout error", connectionId, e);
         }
         try {
-            logger.info("process destroy, pid: {}", pid);
+            logger.info("id: {}, process destroy, pid: {}", connectionId, pid);
             ptyProcess.destroy();
         } catch (Exception e){
-            logger.error("close connection error ", e);
+            logger.error("id: {}, close connection error", connectionId, e);
         }
     }
 
@@ -209,7 +209,7 @@ public class ShellConnection implements Connection {
 
         @Override
         public void run() {
-			logger.info("{} start", Thread.currentThread().getName());
+			logger.info("id: {}, {} start", connectionId, Thread.currentThread().getName());
             char[] buffer = new char[1024];
             try {
                 while (!Thread.interrupted()) {
@@ -232,9 +232,9 @@ public class ShellConnection implements Connection {
                     }
                 }
             } catch (IOException e) {
-                logger.error("ShellOutputReader read exception ", e);
+                logger.error("id: {}, ShellOutputReader read exception", connectionId, e);
             }
-			logger.info("{} Terminated", Thread.currentThread().getName());
+			logger.info("id: {}, {} Terminated", connectionId, Thread.currentThread().getName());
         }
 
         private boolean matchFlags(String[] flags, int fromIndex) {
@@ -260,7 +260,7 @@ public class ShellConnection implements Connection {
 
         @Override
         public void run() {
-			logger.info("{} start", Thread.currentThread().getName());
+			logger.info("id: {}, {} start", connectionId, Thread.currentThread().getName());
             CommandConfigurer keepAliveCommand = CommandConfigurerBuilder.newCommandConfigurer(connectionConfigurer.getKeepAliveCommand())
                     .enter("")
                     .successFlags(connectionConfigurer.getKeepAliveWaitStr())
@@ -277,7 +277,7 @@ public class ShellConnection implements Connection {
                                 long tempLastSendTime = lastSendTime;
                                 lastSendKeepAliveCommandTime = System.currentTimeMillis();
                                 CommandResult commandResult = sendCommand(keepAliveCommand);
-								logger.info("pid: {}, keepAliveResult: {}", pid, commandResult);
+								logger.info("id: {}, pid: {}, keepAliveResult: {}", connectionId, pid, commandResult);
                                 lastSendTime = tempLastSendTime;
                             }
                         }
@@ -285,12 +285,12 @@ public class ShellConnection implements Connection {
                     TimeUnit.SECONDS.sleep(5);
                 }
             } catch (Exception e) {
-                logger.error(Thread.currentThread().getName(), e);
+                logger.error("id: {}, {}", connectionId, Thread.currentThread().getName(), e);
                 if (!isConnected()) {
-					logger.error("{} Exit, Connection Closed", Thread.currentThread().getName());
+					logger.error("id: {}, {} Exit, Connection Closed", connectionId, Thread.currentThread().getName());
                 }
             }
-			logger.info("{} Terminated", Thread.currentThread().getName());
+			logger.info("id: {}, {} Terminated", connectionId, Thread.currentThread().getName());
         }
     }
 }

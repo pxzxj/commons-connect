@@ -41,12 +41,12 @@ public class SshConnection extends ConnectionBase {
         try {
             preDisconnect();
         } catch (Exception e){
-            logger.error("logout error ", e);
+            logger.error("id: {}, logout error", getConnectionId(), e);
         }
         try {
             session.disconnect();
         } catch (Exception e){
-            logger.error("close connection error ", e);
+            logger.error("id: {}, close connection error", getConnectionId(), e);
         }
     }
 

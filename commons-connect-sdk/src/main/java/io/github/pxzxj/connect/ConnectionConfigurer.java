@@ -1,6 +1,5 @@
 package io.github.pxzxj.connect;
 
-import java.io.Serializable;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -226,7 +225,6 @@ public class ConnectionConfigurer {
                 ", shellPath='" + shellPath + '\'' +
                 ", charset='" + charset + '\'' +
                 ", username='" + username + '\'' +
-                ", password='" + password + '\'' +
                 ", postConnect=" + postConnect +
                 ", preDisconnect=" + preDisconnect +
                 ", successFlags=" + Arrays.toString(successFlags) +

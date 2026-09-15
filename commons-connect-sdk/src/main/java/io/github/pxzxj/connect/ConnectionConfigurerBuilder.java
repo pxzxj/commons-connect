@@ -163,7 +163,9 @@ public class ConnectionConfigurerBuilder {
         if(keepAliveCommand != null){
             connectionConfigurer.setKeepAliveCommand(keepAliveCommand);
         }
-        connectionConfigurer.setKeepAliveWaitStr(keepAliveWaitStr);
+		if(keepAliveWaitStr !=  null){
+			connectionConfigurer.setKeepAliveWaitStr(keepAliveWaitStr);
+		}
         if(keepAliveWaitTimeout != 0){
             connectionConfigurer.setKeepAliveWaitTimeout(keepAliveWaitTimeout);
         }

@@ -1,10 +1,9 @@
 package io.github.pxzxj.connect;
 
-import java.io.Serializable;
 import java.util.Arrays;
 import java.util.function.Function;
 
-public class CommandConfigurer implements Serializable {
+public class CommandConfigurer {
 
     private static final int DEFAULT_WAIT_TIMEOUT = 5000;
 

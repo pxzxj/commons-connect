@@ -50,7 +50,7 @@ public abstract class ConnectionBase implements Connection {
 			writer.flush();
 		}
 		catch (IOException e) {
-			logger.error("command send fail: {}", command, e);
+			logger.error("id: {}, command send fail: {}", connectionId, command, e);
 			throw new GeneralCommandException("command send fail: " + command, e);
 		}
 	}
@@ -178,7 +178,7 @@ public abstract class ConnectionBase implements Connection {
 			startIndex = startIndex - length;
 		}
 		byte head = data[0];
-		while (startIndex < totalData.length - length) {
+		while (startIndex <= totalData.length - length) {
 			startIndex = ArrayUtils.indexOf(totalData, head, startIndex);
 			if (startIndex == -1) {
 				break;
@@ -277,7 +277,7 @@ public abstract class ConnectionBase implements Connection {
 
 		@Override
 		public void run() {
-			logger.info("{} start", Thread.currentThread().getName());
+			logger.info("id: {}, {} start", connectionId, Thread.currentThread().getName());
 			try {
 				CommandConfigurer keepAliveCommand = CommandConfigurerBuilder.newCommandConfigurer(connectionConfigurer.getKeepAliveCommand())
 						.enter("")
@@ -303,12 +303,12 @@ public abstract class ConnectionBase implements Connection {
 				}
 			}
 			catch (Exception e) {
-				logger.error(Thread.currentThread().getName(), e);
+				logger.error("id: {}, {}", connectionId, Thread.currentThread().getName(), e);
 				if (!isConnected()) {
-					logger.error("{} Exit, Connection Closed", Thread.currentThread().getName());
+					logger.error("id: {}, {} Exit, Connection Closed", connectionId, Thread.currentThread().getName());
 				}
 			}
-			logger.info("{} Terminated", Thread.currentThread().getName());
+			logger.info("id: {}, {} Terminated", connectionId, Thread.currentThread().getName());
 		}
 	}
 

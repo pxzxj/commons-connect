@@ -8,6 +8,8 @@ public class CommandConfigurer implements Serializable {
 
     private static final int DEFAULT_WAIT_TIMEOUT = 5000;
 
+	public final static String DEFAULT_WAIT_STR = "(!@#$%)";
+
     public static final String BACKSLASH_N = "\n";
     public static final String BACKSLASH_RN = "\r\n";
 

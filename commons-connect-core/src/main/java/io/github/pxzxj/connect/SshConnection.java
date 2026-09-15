@@ -23,7 +23,15 @@ public class SshConnection extends ConnectionBase {
         this.channelShell = channelShell;
     }
 
-    @Override
+	public Session getSession() {
+		return session;
+	}
+
+	public ChannelShell getChannelShell() {
+		return channelShell;
+	}
+
+	@Override
     public boolean isConnected() {
         return channelShell.isConnected();
     }

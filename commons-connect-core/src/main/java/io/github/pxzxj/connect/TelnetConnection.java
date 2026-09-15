@@ -19,7 +19,11 @@ public class TelnetConnection extends ConnectionBase {
         this.telnetClient = telnetClient;
     }
 
-    @Override
+	public TelnetClient getTelnetClient() {
+		return telnetClient;
+	}
+
+	@Override
     public boolean isConnected() {
         return telnetClient.isConnected();
     }

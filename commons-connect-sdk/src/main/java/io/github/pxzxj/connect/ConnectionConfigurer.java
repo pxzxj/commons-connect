@@ -65,7 +65,7 @@ public class ConnectionConfigurer {
     /**
      * 保活命令等待回显
      */
-    private String keepAliveWaitStr;
+    private String keepAliveWaitStr = CommandConfigurer.DEFAULT_WAIT_STR;
     /**
      * 保活命令登到回显时长
      */

@@ -415,10 +415,7 @@ public class ConnectService {
 
 == todo
 
-* 日志中使用connectionId
-* isConnected和close()联动
-* 处理转义字符和控制字符
-* 新建两个InputStream代理类，一个能够检查流结束用于检查Telnet连接状态
+* 处理转义字符
 * 遗留问题在一个临时创建的线程中调用 `connection.sendCommand` 发送命令，之后线程结束，此后连接失效不能继续发送其它命令
 * 回显截断字符处理，参考下图
 

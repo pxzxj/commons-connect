@@ -89,7 +89,7 @@ public class ShellConnection implements Connection {
             }
             postConnectOutput += commandResult.getResult();
         }
-        logger.info("host: " + connectionConfigurer.getHost() + ", login output: " + postConnectOutput);
+		logger.info("id: {}, postConnectOutput: {}", connectionId, postConnectOutput);
         if(StringUtils.isNotEmpty(connectionConfigurer.getKeepAliveCommand())){
             keepAliveThread = new Thread(new KeepAliveDaemon());
             keepAliveThread.setName("KeepAliveDaemon " + pid);
@@ -101,12 +101,12 @@ public class ShellConnection implements Connection {
     public synchronized void sendString(String command, String enter) {
         try {
             command += enter;
-            logger.info("host: " + connectionConfigurer.getHost() + ", send command: " + command);
+			logger.info("id: {}, send command: {}", connectionId, command);
             lastSendTime = System.currentTimeMillis();
             writer.write(command);
             writer.flush();
         } catch (IOException e) {
-            logger.error("command send fail: " + command, e);
+			logger.error("id: {}, command send fail: {}", connectionId, command, e);
             throw new GeneralCommandException("command send fail: " + command, e);
         }
     }
@@ -209,7 +209,7 @@ public class ShellConnection implements Connection {
 
         @Override
         public void run() {
-            logger.info(Thread.currentThread().getName() + " start");
+			logger.info("{} start", Thread.currentThread().getName());
             char[] buffer = new char[1024];
             try {
                 while (!Thread.interrupted()) {
@@ -234,7 +234,7 @@ public class ShellConnection implements Connection {
             } catch (IOException e) {
                 logger.error("ShellOutputReader read exception ", e);
             }
-            logger.info(Thread.currentThread().getName() + " Terminated");
+			logger.info("{} Terminated", Thread.currentThread().getName());
         }
 
         private boolean matchFlags(String[] flags, int fromIndex) {
@@ -260,7 +260,7 @@ public class ShellConnection implements Connection {
 
         @Override
         public void run() {
-            logger.info(Thread.currentThread().getName() + " start");
+			logger.info("{} start", Thread.currentThread().getName());
             CommandConfigurer keepAliveCommand = CommandConfigurerBuilder.newCommandConfigurer(connectionConfigurer.getKeepAliveCommand())
                     .enter("")
                     .successFlags(connectionConfigurer.getKeepAliveWaitStr())
@@ -277,7 +277,7 @@ public class ShellConnection implements Connection {
                                 long tempLastSendTime = lastSendTime;
                                 lastSendKeepAliveCommandTime = System.currentTimeMillis();
                                 CommandResult commandResult = sendCommand(keepAliveCommand);
-                                logger.info("pid: " + pid + ", keepAliveResult: " + commandResult);
+								logger.info("pid: {}, keepAliveResult: {}", pid, commandResult);
                                 lastSendTime = tempLastSendTime;
                             }
                         }
@@ -287,10 +287,10 @@ public class ShellConnection implements Connection {
             } catch (Exception e) {
                 logger.error(Thread.currentThread().getName(), e);
                 if (!isConnected()) {
-                    logger.error(Thread.currentThread().getName() + " Exit, Connection Closed");
+					logger.error("{} Exit, Connection Closed", Thread.currentThread().getName());
                 }
             }
-            logger.info(Thread.currentThread().getName() + " Terminated");
+			logger.info("{} Terminated", Thread.currentThread().getName());
         }
     }
 }

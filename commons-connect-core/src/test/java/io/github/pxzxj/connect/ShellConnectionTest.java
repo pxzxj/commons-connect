@@ -98,6 +98,17 @@ class ShellConnectionTest {
 	}
 
 	@Test
+	void postConnect_emptySuccessFlagsArray_connectsSuccessfully() throws Exception {
+		ShellConnection connection = newConnection(configurer());
+		deviceResponds("Welcome\r\n");
+
+		connection.postConnect();
+
+		assertEquals("Welcome\r\n", connection.getPostConnectOutput());
+		assertTrue(connection.isConnected());
+	}
+
+	@Test
 	void postConnect_flagNeverMatched_closesConnectionAndThrows() throws Exception {
 		ShellConnection connection = newConnection(configurer("bash$ "));
 		deviceResponds("Login incorrect\r\n");

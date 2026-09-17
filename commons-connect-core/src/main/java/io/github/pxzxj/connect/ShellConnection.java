@@ -9,6 +9,7 @@ import java.io.Writer;
 import java.util.concurrent.TimeUnit;
 
 import com.pty4j.PtyProcess;
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,11 +30,11 @@ public class ShellConnection implements Connection {
     private final Reader reader;
     private final Writer writer;
 
-    private int offset = 0;
+    private volatile int offset = 0;
     private final StringBuffer outputBuffer = new StringBuffer();
     private String postConnectOutput = "";
-    private CommandConfigurer currentCommandConfigurer;
-    private CommandResult currentCommandResult;
+    private volatile CommandConfigurer currentCommandConfigurer;
+    private volatile CommandResult currentCommandResult;
 
     private Thread outputReaderThread;
     private Thread keepAliveThread;
@@ -47,12 +48,6 @@ public class ShellConnection implements Connection {
         this.pid = ptyProcess.pid();
         this.reader = new InputStreamReader(ptyProcess.getInputStream(), connectionConfigurer.getCharset());
         this.writer = new OutputStreamWriter(ptyProcess.getOutputStream(), connectionConfigurer.getCharset());
-        this.currentCommandConfigurer = CommandConfigurerBuilder.newCommandConfigurer("")
-                                                            .successFlags(connectionConfigurer.getSuccessFlags())
-                                                            .failFlags(connectionConfigurer.getFailFlags())
-                                                            .timeoutMilliSeconds(connectionConfigurer.getTimeoutMilliSeconds())
-                                                            .build();
-        this.currentCommandResult = CommandResult.successfulResult();
         logger.info("id: {}, create process success, pid: {}", connectionId, this.pid);
     }
 
@@ -66,13 +61,18 @@ public class ShellConnection implements Connection {
     }
 
     public void postConnect() {
+		currentCommandConfigurer = CommandConfigurerBuilder.newCommandConfigurer("")
+				.successFlags(connectionConfigurer.getSuccessFlags())
+				.failFlags(connectionConfigurer.getFailFlags())
+				.timeoutMilliSeconds(connectionConfigurer.getTimeoutMilliSeconds())
+				.build();
+		currentCommandResult = ArrayUtils.isNotEmpty(connectionConfigurer.getSuccessFlags()) ? CommandResult.failedResult("") : CommandResult.successfulResult("");
         outputReaderThread = new Thread(new ShellOutputReader());
         outputReaderThread.setName("ShellOutputReader " + pid);
         outputReaderThread.setDaemon(true);
         outputReaderThread.start();
         waitForString();
-        if(!currentCommandResult.isSuccess() ||
-				(currentCommandResult.getResult() == null && currentCommandConfigurer.getSuccessFlags() != null)) {
+        if(!currentCommandResult.isSuccess()) {
             if(isConnected()){
                 close();
             }
@@ -137,13 +137,12 @@ public class ShellConnection implements Connection {
 				return CommandResult.failedResult("command and commandFunction cannot be null in same time");
             }
             this.currentCommandConfigurer = cc;
-            this.currentCommandResult = CommandResult.successfulResult();
+            this.currentCommandResult = ArrayUtils.isNotEmpty(currentCommandConfigurer.getSuccessFlags()) ? CommandResult.failedResult("") : CommandResult.successfulResult("");
             String enter = cc.getEnter();
             String command = cc.getCommand() != null ? cc.getCommand() : cc.getCommandFunction().apply(lastOutput);
             sendString(command, enter);
             waitForString();
-            if(!currentCommandResult.isSuccess() ||
-                    (currentCommandResult.getResult() == null && currentCommandConfigurer.getSuccessFlags() != null)) {
+            if(!currentCommandResult.isSuccess()) {
                 commandResult.setSuccess(false);
                 commandResult.setFailCommand(cc);
                 break;
@@ -160,7 +159,7 @@ public class ShellConnection implements Connection {
         String moreCommand = currentCommandConfigurer.getMoreCommand();
         String moreFlag = currentCommandConfigurer.getMoreFlag();
         try {
-            while (System.currentTimeMillis() - startTime < timeoutMilliSeconds && currentCommandResult.getResult() == null) {
+            while (System.currentTimeMillis() - startTime < timeoutMilliSeconds && StringUtils.isEmpty(currentCommandResult.getResult())) {
                 if (moreFlag != null) {
                     sendString(moreCommand, "");
                 } else if (System.currentTimeMillis() - lastSendTime > connectionConfigurer.getKeepAliveInterval()) {
@@ -235,15 +234,13 @@ public class ShellConnection implements Connection {
 						int fromIndex = outputBuffer.length();
 						outputBuffer.append(buffer, 0, len);
 						boolean failed = matchFlags(currentCommandConfigurer.getFailFlags(), fromIndex);
-						boolean success = false;
+						boolean success = ArrayUtils.isEmpty(currentCommandConfigurer.getSuccessFlags()) && ArrayUtils.isEmpty(currentCommandConfigurer.getFailFlags());
 						if(!failed) {
 							success = matchFlags(currentCommandConfigurer.getSuccessFlags(), fromIndex);
 						}
 						if(success | failed) {
-							if(currentCommandConfigurer.getSuccessFlags() != null || currentCommandConfigurer.getFailFlags() != null) {
-								currentCommandResult.setSuccess(success);
-							}
-							currentCommandResult.setResult(outputBuffer.substring(fromIndex));
+							String output = outputBuffer.substring(fromIndex);
+							currentCommandResult = success ? CommandResult.successfulResult(output) : CommandResult.failedResult(output);
 						}
 					}
                 }

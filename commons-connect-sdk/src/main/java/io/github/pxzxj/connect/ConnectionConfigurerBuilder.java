@@ -91,8 +91,8 @@ public class ConnectionConfigurerBuilder {
         return this;
     }
 
-    public ConnectionConfigurerBuilder preLogout(CommandConfigurer preLogout){
-        this.preDisconnect = preLogout;
+    public ConnectionConfigurerBuilder preDisconnect(CommandConfigurer preDisconnect){
+        this.preDisconnect = preDisconnect;
         return this;
     }
 

@@ -26,47 +26,47 @@ public class ConnectionConfigurer {
     
     private String charset = "utf-8";
     /**
-     * 登录用户名
+     * Login user name
      */
     private String username;
     /**
-     * 登录密码
+     * Login password
      */
     private String password;
     /**
-     * 连接成功后发送的命令
+     * Command sent right after a successful login
      */
     private CommandConfigurer postConnect;
     /**
-     * 登出前发送的命令
+     * Command sent before disconnecting
      */
     private CommandConfigurer preDisconnect;
     /**
-     * socket连接后的成功标识
+     * Success flags expected after the socket is connected
      */
     private String[] successFlags;
     /**
-     * socket连接后的失败标识
+     * Fail flags expected after the socket is connected
      */
     private String[] failFlags;
     /**
-     * 等待成功或失败标识的时间
+     * Time to wait for the success or fail flags
      */
     private int timeoutMilliSeconds = 5000;
     /**
-     * 保持连接活动时间间隔
+     * Keep alive interval in milliseconds
      */
     private int keepAliveInterval = 60000;
     /**
-     * 保持连接活动指令
+     * Keep alive command
      */
     private String keepAliveCommand = DEFAULT_KEEP_ALIVE_COMMAND;
     /**
-     * 保活命令等待回显
+     * Echo awaited for the keep alive command
      */
     private String keepAliveWaitStr = CommandConfigurer.DEFAULT_WAIT_STR;
     /**
-     * 保活命令登到回显时长
+     * Time to wait for the keep alive command echo
      */
     private int keepAliveWaitTimeout = 2000;
 

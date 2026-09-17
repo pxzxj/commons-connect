@@ -1,16 +1,20 @@
 package io.github.pxzxj.connect;
 
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.Reader;
+import java.io.UnsupportedEncodingException;
+import java.io.Writer;
+import java.util.concurrent.TimeUnit;
+
 import com.pty4j.PtyProcess;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
-import java.util.Objects;
-import java.util.concurrent.TimeUnit;
-
 /**
- * inputStream.available()方法失效，因此重新实现读取回显逻辑，参考https://github.com/JetBrains/pty4j/pull/37
+ * inputStream.available() does not work for a pty, so the echo is read with a separate implementation, see https://github.com/JetBrains/pty4j/pull/37
  */
 public class ShellConnection implements Connection {
 
@@ -67,11 +71,12 @@ public class ShellConnection implements Connection {
         outputReaderThread.setDaemon(true);
         outputReaderThread.start();
         waitForString();
-        if(!currentCommandResult.isSuccess()) {
+        if(!currentCommandResult.isSuccess() ||
+				(currentCommandResult.getResult() == null && currentCommandConfigurer.getSuccessFlags() != null)) {
             if(isConnected()){
                 close();
             }
-            throw new GeneralConnectionException("连接失败, 回显内容:" + outputBuffer);
+            throw new GeneralConnectionException("connection failed, echo: " + outputBuffer);
         }
         postConnectOutput = outputBuffer.toString();
         CommandConfigurer postConnectCommand = connectionConfigurer.getPostConnect();
@@ -84,7 +89,7 @@ public class ShellConnection implements Connection {
                 if(isConnected()){
                     close();
                 }
-                String message = "连接后执行命令失败：" + commandResult.getFailCommand() + "\n回显内容：" + commandResult.getResult();
+                String message = "post connect command failed: " + commandResult.getFailCommand() + "\n echo: " + commandResult.getResult();
                 throw new GeneralCommandException(message, commandResult);
             }
             postConnectOutput += commandResult.getResult();
@@ -92,13 +97,13 @@ public class ShellConnection implements Connection {
 		logger.info("id: {}, postConnectOutput: {}", connectionId, postConnectOutput);
         if(StringUtils.isNotEmpty(connectionConfigurer.getKeepAliveCommand())){
             keepAliveThread = new Thread(new KeepAliveDaemon());
-            keepAliveThread.setName("KeepAliveDaemon " + pid);
+            keepAliveThread.setName("KeepAliveDaemon " + connectionId);
             keepAliveThread.setDaemon(true);
             keepAliveThread.start();
         }
     }
 
-    public synchronized void sendString(String command, String enter) {
+    private void sendString(String command, String enter) {
         try {
             command += enter;
 			logger.info("id: {}, send command: {}", connectionId, command);
@@ -114,18 +119,27 @@ public class ShellConnection implements Connection {
     @Override
     public synchronized CommandResult sendCommand(CommandConfigurer commandConfigurer) {
         CommandConfigurer cc = commandConfigurer;
-        Objects.requireNonNull(cc.getCommand(), "first command cannot be null");
+		if (cc.getCommand() == null) {
+			return CommandResult.failedResult("first command cannot be null");
+		}
         CommandResult commandResult = new CommandResult(commandConfigurer);
-        outputBuffer.setLength(0);
+		synchronized (outputBuffer) {
+			outputBuffer.setLength(0);
+			offset = 0;
+		}
         while (cc != null) {
+			String lastOutput = "";
+			if(outputBuffer.length() > 0){
+				lastOutput = outputBuffer.substring(offset);
+			}
             offset = outputBuffer.length();
             if (cc.getCommand() == null && cc.getCommandFunction() == null) {
-                throw new IllegalArgumentException("command and commandFunction cannot be null in same time");
+				return CommandResult.failedResult("command and commandFunction cannot be null in same time");
             }
             this.currentCommandConfigurer = cc;
             this.currentCommandResult = CommandResult.successfulResult();
             String enter = cc.getEnter();
-            String command = cc.getCommand() != null ? cc.getCommand() : cc.getCommandFunction().apply(outputBuffer.substring(offset));
+            String command = cc.getCommand() != null ? cc.getCommand() : cc.getCommandFunction().apply(lastOutput);
             sendString(command, enter);
             waitForString();
             if(!currentCommandResult.isSuccess() ||
@@ -136,11 +150,11 @@ public class ShellConnection implements Connection {
             }
             cc = cc.getNext();
         }
-        commandResult.setResult(outputBuffer.substring(offset));
+        commandResult.setResult(outputBuffer.toString());
         return commandResult;
     }
 
-    public synchronized void waitForString() {
+    public void waitForString() {
         long startTime = lastSendTime = System.currentTimeMillis();
         int timeoutMilliSeconds = currentCommandConfigurer.getTimeoutMilliSeconds();
         String moreCommand = currentCommandConfigurer.getMoreCommand();
@@ -165,7 +179,7 @@ public class ShellConnection implements Connection {
         try {
             if (connectionConfigurer.getPreDisconnect() != null) {
                 CommandResult commandResult = this.sendCommand(connectionConfigurer.getPreDisconnect());
-                logger.info("id: {}, preLogout result: {}", connectionId, commandResult.getResult());
+                logger.info("id: {}, preDisconnect result: {}", connectionId, commandResult.getResult());
             }
             if(outputReaderThread != null) {
                 outputReaderThread.interrupt();
@@ -217,19 +231,21 @@ public class ShellConnection implements Connection {
                     if(len == -1) {
                         break;
                     }
-                    int fromIndex = outputBuffer.length();
-                    outputBuffer.append(buffer, 0, len);
-                    boolean failed = matchFlags(currentCommandConfigurer.getFailFlags(), fromIndex);
-                    boolean success = false;
-                    if(!failed) {
-                        success = matchFlags(currentCommandConfigurer.getSuccessFlags(), fromIndex);
-                    }
-                    if(success | failed) {
-                        if(currentCommandConfigurer.getSuccessFlags() != null || currentCommandConfigurer.getFailFlags() != null) {
-                            currentCommandResult.setSuccess(success);
-                        }
-                        currentCommandResult.setResult(outputBuffer.substring(fromIndex));
-                    }
+					synchronized (outputBuffer) {
+						int fromIndex = outputBuffer.length();
+						outputBuffer.append(buffer, 0, len);
+						boolean failed = matchFlags(currentCommandConfigurer.getFailFlags(), fromIndex);
+						boolean success = false;
+						if(!failed) {
+							success = matchFlags(currentCommandConfigurer.getSuccessFlags(), fromIndex);
+						}
+						if(success | failed) {
+							if(currentCommandConfigurer.getSuccessFlags() != null || currentCommandConfigurer.getFailFlags() != null) {
+								currentCommandResult.setSuccess(success);
+							}
+							currentCommandResult.setResult(outputBuffer.substring(fromIndex));
+						}
+					}
                 }
             } catch (IOException e) {
                 logger.error("id: {}, ShellOutputReader read exception", connectionId, e);

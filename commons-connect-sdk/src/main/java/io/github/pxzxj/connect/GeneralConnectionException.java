@@ -1,7 +1,7 @@
 package io.github.pxzxj.connect;
 
 /**
- * 创建连接通用异常
+ * Common exception for connection creation failures
  */
 public class GeneralConnectionException extends RuntimeException {
 

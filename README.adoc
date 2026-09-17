@@ -1,14 +1,24 @@
+:toc:
 = commons-connect
+
+link:README_en.adoc[English] | 中文
 
 
 == 简介
 
 === 特性
 
-commons-connect项目为连接设备和下发指令提供了更简单易用的API，
+commons-connect 为连接设备和下发指令提供了简单易用的 API，主要特性如下
+
+* 支持 SSH、TELNET、SHELL 三种连接类型，且可以自行扩展
+* 连接参数（包含完整的登录过程）都保存在 `ConnectionConfigurer` 里，可 JSON 序列化后入库，按需下发
+* 支持指令链：每条指令可单独配置成功/失败标识、超时、分屏标识，上一条成功才下发下一条
+* 内置回显解析，编码可配置，支持分屏输出与保活命令
+* 连接相关的日志都带 `id: {connectionId}`，便于区分同一进程内的多个连接
 
 === 要求
-JDK版本在1.8以上
+
+* JDK 1.8+
 
 === 安装
 在项目的pom文件中引入commons-connect-core依赖并配置本地maven仓库
@@ -32,9 +42,7 @@ JDK版本在1.8以上
 public class StartConnect {
 
     public static void main(String[] args){
-        List<ConnectionFactory> connectionFactories = new ArrayList<>();
-        connectionFactories.add(new SshConnectionFactory());
-        connectionFactories.add(new TelnetConnectionFactory());
+        ConnectionFactory connectionFactory = new CompositeConnectionFactory(new SshConnectionFactory(), new TelnetConnectionFactory());
         ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.ssh()
                                                     .host("192.168.3.1")
                                                     .port(22)
@@ -44,10 +52,7 @@ public class StartConnect {
                                                     .successFlags("#")
                                                     .postConnect(CommandConfigurerBuilder.newCommandConfigurer("echo 'Hello Linux!'").enter("\n").successFlags("#").build())
                                                     .build();                 // <1>
-        Connection connection = connectionFactories.stream()
-                                            .filter(factory -> factory.support(connectionConfigurer))
-                                            .findFirst().orElseThrow(() -> new GeneralConnectionException("找不到可用的ConnectionFactory"))
-                                            .createConnection(connectionConfigurer);      // <2>
+        Connection connection = connectionFactory.createConnection(connectionConfigurer);      // <2>
         CommandConfigurer commandConfigurer = CommandConfigurerBuilder.newCommandConfigurer("df -h")
                                                                 .successFlags("#")
                                                                 .next("pwd")
@@ -59,48 +64,54 @@ public class StartConnect {
             System.out.println("执行失败的命令 = " + commandResult.getFailCommand());
         }
         System.out.println("执行回显 = " + commandResult.getResult());
-        connection.close();                                                              // <5>
-        System.out.println("全屏内容 = " + connection.getFullScreen());
+        System.out.println("登录回显 = " + connection.getPostConnectOutput());           // <5>
+        connection.close();                                                              // <6>
     }
 }
 ----
-<1> 创建连接配置，包括连接使用的协议、设备信息、成功标识等
-<2> 选择合适的连接连接工厂(ConnectionFactory)使用上一步的配置创建连接
-<3> 创建下发指令的配置，包括指令内容、成功失败标识、下一条指令
-<4> 下发指令，返回的结果包括下发是否成功、失败的指令以及回显，如果是FTP和SFTP，这一步可以使用 `getResultStream()` 方法获取下载的文件流
-<5> 关闭连接
+<1> 创建连接配置：协议、设备信息、编码、成功标识，以及登录后要执行的指令
+<2> 创建连接
+<3> 创建指令配置：指令内容、成功/失败标识、下一条指令
+<4> 下发指令，返回结果包含是否成功、失败的指令以及回显
+<5> 登录后的回显，例如 SSH 的 motd、SHELL 的终端提示符
+<6> 关闭连接，会先执行 `preDisconnect` 配置的登出指令
+
+== 架构
+
+image::images/architecture.png[]
 
 == API说明
 
 [[connection]]
 === Connection
 
-image::images/Connection.png[]
-
-`Connection` 接口表示一个连接，不同的协议有不同的实现如 `SshConnection`、`FtpConnection`，主要包含如下方法
+`Connection` 接口表示一个连接，目前有 `SshConnection`、`TelnetConnection`、`ShellConnection` 三个实现，主要包含如下方法
 
 [horizontal]
-`sendCommand()` :: 下发指令
+`getConnectionId()` :: 连接标识，也就是日志里 `id: {}` 打印的值；没有显式配置 `id` 时，SSH/TELNET 取 host，SHELL 取进程 pid
+`getCreateTime()` :: 连接的创建时间
+`getPostConnectOutput()` :: 登录后的回显，例如 SSH 的 motd
+`getConnectionConfigurer()` :: 创建该连接时使用的配置
+`sendCommand(CommandConfigurer)` :: 下发指令，返回 <<commandResult, CommandResult>>
 `isConnected()` :: 检查连接是否断开
-`close()` ::  关闭连接
+`close()` :: 关闭连接，会先执行 `preDisconnect` 配置的登出指令
 
 
 NOTE: `Connection` 继承了 `AutoCloseable` 接口，因此支持以try-with-resource的方式使用，这样连接会自动关闭
 
 === ConnectionFactory
 
-image::images/ConnectionFactory.png[]
-
-创建连接的过程可能很复杂，因此使用工厂模式， `ConnectionFactory` 是一个接口，它的createConnection()方法用来创建连接 +
-`ConnectionFactory` 可能存在多个实现类，但只会使用 `support()` 方法返回true的实现类来创建连接，伪代码如下
+创建连接的过程可能很复杂，因此使用工厂模式，`ConnectionFactory` 是一个接口，它的 `createConnection()` 方法用来创建连接 +
+`ConnectionFactory` 可能存在多个实现类，但只会使用 `supports()` 方法返回 true 的实现类来创建连接，伪代码如下
 
 [source,java,subs="verbatim"]
 ----
 List<ConnectionFactory> factories = ...
 Connection connection = null;
 for(ConnectionFactory factory : factories) {
-    if(factory.support(connectionConfigurer) {
+    if(factory.supports(connectionConfigurer)) {
         connection = factory.createConnection(connectionConfigurer);
+        break;
     }
 }
 ----
@@ -116,9 +127,21 @@ NOTE: `ConnectionFactory` 的设计借鉴了 `org.springframework.web.method.sup
 
 |type
 |String
-|连接类型，目前支持ssh和telnet两类
+|连接类型，目前支持 ssh、telnet、shell 三类
 |是
 |
+
+|id
+|String
+|连接标识，会作为日志中的 connectionId
+|否
+|SSH/TELNET 取 host，SHELL 取进程 pid
+
+|shellPath
+|String
+|SHELL 类型下启动的终端程序
+|否
+|Windows 为 cmd.exe，其它系统为 /bin/bash
 
 |host
 |String
@@ -130,7 +153,7 @@ NOTE: `ConnectionFactory` 的设计借鉴了 `org.springframework.web.method.sup
 |int
 |连接端口
 |否
-|23
+|23（`ConnectionConfigurerBuilder.ssh()` 会设为 22）
 
 |charset
 |String
@@ -141,13 +164,13 @@ NOTE: `ConnectionFactory` 的设计借鉴了 `org.springframework.web.method.sup
 |username
 |String
 |登录使用的用户名
-|否
+|SSH 必填
 |
 
 |password
 |String
 |登录使用的密码
-|否
+|SSH 必填
 |
 
 |postConnect
@@ -156,7 +179,7 @@ NOTE: `ConnectionFactory` 的设计借鉴了 `org.springframework.web.method.sup
 |否
 |
 
-|preLogout
+|preDisconnect
 |<<commandConfigurer, CommandConfigurer>>
 |登出前执行的指令
 |否
@@ -223,20 +246,14 @@ NOTE: `ConnectionConfigurerBuilder` 是 `ConnectionConfigurer` 对应的构建�
 
 |command
 |String
-|指令内容，
-|与commandFunction二者必须有一个非空
+|指令内容
+|与 commandFunction 二者必须有一个非空
 |
 
 |commandFunction
 |Function<String, String>
-|生成指令的函数，参数为上一条命令回显，返回值为需要执行的指令，以javascript的语法定义函数如function apply(s){}
-|与command二者必须有一个非空
-|
-
-|description
-|String
-|指令的描述，无实际意义，仅起说明作用
-|否
+|生成指令的函数，入参为前序指令的回显，出参为要执行的指令（Java 函数式接口 `Function<String, String>`）
+|与 command 二者必须有一个非空
 |
 
 |timeoutMilliSeconds
@@ -284,6 +301,7 @@ NOTE: `ConnectionConfigurerBuilder` 是 `ConnectionConfigurer` 对应的构建�
 
 NOTE: `CommandConfigurerBuilder` 是 `CommandConfigurer` 对应的构建器类，使用它可以更优雅地创建 `CommandConfigurer` 的实例
 
+[[commandResult]]
 === CommandResult
 `CommandResult` 是 `Connection` 的 `sendCommand(CommandConfigurer commandConfigurer)` 方法的返回值类型，它也是一个简单的Java Bean，保存了指令执行的结果，包含如下属性
 
@@ -313,13 +331,19 @@ NOTE: `CommandConfigurerBuilder` 是 `CommandConfigurer` 对应的构建器类�
 
 == 连接类型
 
-目前组件支持的连接类型包括SSH、TELNET、SHELL对应的 `ConnectionConfigurer.type` 属性值分别为ssh、telnet、shell +
+目前支持的连接类型为 SSH、TELNET、SHELL，对应的 `ConnectionConfigurer.type` 属性值分别为 ssh、telnet、shell +
 
+[horizontal]
+SSH :: 使用 `SshConnectionFactory`，需要 `host`、`username`、`password` 三个属性，底层依赖 JSch
+TELNET :: 使用 `TelnetConnectionFactory`，只需要 `host` 和 `port`，底层依赖 commons-net
+SHELL :: 使用 `ShellConnectionFactory`，在本机启动一个终端进程，底层依赖 pty4j
 
 使用Telnet连接设备时要注意用户名密码以及登录过程的判断都需要配置在 `ConnectionConfigurer.postConnect` 属性中，而不能使用 `username` 和 `password` 属性
 
 shell是所有连接类型中最强大的，它模拟了操作系统的命令行终端，因此所有命令行下支持的操作都可以使用 `ShellConnection` 完成。不同操作系统打开终端的命令不同，
-默认情况下Windows使用 `cmd.exe`，其它操作系统使用 `/bin/bash`，也可以使用 `shellPath` 属性进行配置
+默认情况下Windows使用 `cmd.exe`，其它操作系统使用 `/bin/bash`，也可以使用 `shellPath` 属性进行配置 +
+
+NOTE: SHELL 连接的回显编码取决于本机终端，例如中文 Windows 下 `cmd.exe` 输出的是 GBK，此时建议把 `charset` 显式设为 GBK，否则回显里的中文会乱码
 
 
 == 最佳实践
@@ -356,7 +380,7 @@ commons-connect将所有的登录过程都保存在 `ConnectionConfigurer` 对�
   	"successFlags" : ["RETCODE = 0"]
   }
  },
- "preLogout" : {
+ "preDisconnect" : {
  	"command" : "UNREG NE:Name=\"${'name'}\";",
  	"successFlags" : ["RETCODE = 0"],
  	"next" : {
@@ -402,7 +426,7 @@ public class ConnectService {
     private ConnectionFactory connectionFactory;
 
     public Connection connect(ConnectionConfigurer connectionConfigurer){
-        if(connectionFactory.support(connectionConfigurer)) {
+        if(connectionFactory.supports(connectionConfigurer)) {
             return connectionFactory.createConnection(connectionConfigurer);
         }
         return null;
@@ -412,8 +436,7 @@ public class ConnectService {
 
 == todo
 
-* 处理转义字符
-* 遗留问题在一个临时创建的线程中调用 `connection.sendCommand` 发送命令，之后线程结束，此后连接失效不能继续发送其它命令
+* 在一个临时创建的线程中调用 `connection.sendCommand` 发送命令，线程结束后连接失效，不能继续发送其它命令
 * 回显截断字符处理，参考下图
 
 image::images/encode-decode.png[]

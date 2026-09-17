@@ -21,13 +21,13 @@ public class CompositeConnectionFactory implements ConnectionFactory {
     }
 
     @Override
-    public boolean support(ConnectionConfigurer connectionConfigurer) {
-        return delegates.stream().anyMatch(f -> f.support(connectionConfigurer));
+    public boolean supports(ConnectionConfigurer connectionConfigurer) {
+        return delegates.stream().anyMatch(f -> f.supports(connectionConfigurer));
     }
 
     @Override
     public Connection createConnection(ConnectionConfigurer connectionConfigurer) throws GeneralConnectionException {
-        return delegates.stream().filter(f -> f.support(connectionConfigurer))
+        return delegates.stream().filter(f -> f.supports(connectionConfigurer))
                                 .findFirst().orElse(new TelnetConnectionFactory())
                                 .createConnection(connectionConfigurer);
     }

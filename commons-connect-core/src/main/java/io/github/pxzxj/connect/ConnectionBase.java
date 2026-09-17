@@ -1,13 +1,18 @@
 package io.github.pxzxj.connect;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.UnsupportedEncodingException;
+import java.io.Writer;
+import java.util.Arrays;
+import java.util.concurrent.TimeUnit;
+
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.*;
-import java.util.Arrays;
-import java.util.concurrent.TimeUnit;
 
 public abstract class ConnectionBase implements Connection {
 
@@ -59,13 +64,14 @@ public abstract class ConnectionBase implements Connection {
 	public synchronized CommandResult sendCommand(CommandConfigurer commandConfigurer) {
 		CommandConfigurer cc = commandConfigurer;
 		if (cc.getCommand() == null) {
-			return CommandResult.failedResult("第一条命令不能为空");
+			return CommandResult.failedResult("first command cannot be null");
 		}
 		CommandResult commandResult = new CommandResult(commandConfigurer);
 		String echo = "";
+		String lastEcho = "";
 		while (cc != null) {
 			if (cc.getCommand() == null && cc.getCommandFunction() == null) {
-				return CommandResult.failedResult("command和commandFunction不能同时为空");
+				return CommandResult.failedResult("command and commandFunction cannot both be null");
 			}
 			String[] successFlags = cc.getSuccessFlags();
 			String[] failFlags = cc.getFailFlags();
@@ -73,10 +79,11 @@ public abstract class ConnectionBase implements Connection {
 			String enter = cc.getEnter();
 			String moreFlag = cc.getMoreFlag();
 			String moreCommand = cc.getMoreCommand();
-			String command = cc.getCommand() != null ? cc.getCommand() : cc.getCommandFunction().apply(echo);
+			String command = cc.getCommand() != null ? cc.getCommand() : cc.getCommandFunction().apply(lastEcho);
 			sendString(command, enter);
 			if (successFlags != null || failFlags != null) {
 				CommandResult waitResult = waitForString(successFlags, failFlags, timeoutMilliSeconds, moreFlag, moreCommand);
+				lastEcho = waitResult.getResult();
 				echo += waitResult.getResult();
 				if (!waitResult.isSuccess()) {
 					commandResult.setSuccess(false);
@@ -86,6 +93,7 @@ public abstract class ConnectionBase implements Connection {
 			}
 			else {
 				CommandResult waitResult = waitForString(new String[]{CommandConfigurer.DEFAULT_WAIT_STR}, null, timeoutMilliSeconds, moreFlag, moreCommand);
+				lastEcho = waitResult.getResult();
 				echo += waitResult.getResult();
 			}
 			cc = cc.getNext();
@@ -126,11 +134,11 @@ public abstract class ConnectionBase implements Connection {
 					boolean failMatch = matchEnd(totalData, failMatchByteArray, totalSize);
 					boolean successMatch = successFlags.length == 0 || matchEnd(totalData, successMatchByteArray, totalSize);
 					if (successMatch && !failMatch) {
-						//匹配成功标识且不匹配失败标识才视作成功
+						// only a match of a success flag without a match of a fail flag counts as success
 						success = true;
 					}
 					if (failMatch || success) {
-						//成功匹配后再取出流中剩余数据
+						// drain whatever is left in the stream once a flag has matched
 						if ((availableSize = inputStream.available()) > 0) {
 							data = new byte[availableSize];
 							read = inputStream.read(data);
@@ -220,7 +228,7 @@ public abstract class ConnectionBase implements Connection {
 				if (isConnected()) {
 					close();
 				}
-				throw new GeneralConnectionException("连接失败, 回显内容:" + waitResult.getResult());
+				throw new GeneralConnectionException("connection failed, echo: " + waitResult.getResult());
 			}
 		}
 		else {
@@ -238,7 +246,7 @@ public abstract class ConnectionBase implements Connection {
 				if (isConnected()) {
 					close();
 				}
-				String message = "连接后执行命令失败：" + commandResult.getFailCommand() + "\n回显内容：" + commandResult.getResult();
+				String message = "post connect command failed: " + commandResult.getFailCommand() + "\n echo: " + commandResult.getResult();
 				throw new GeneralCommandException(message, commandResult);
 			}
 		}
@@ -271,7 +279,7 @@ public abstract class ConnectionBase implements Connection {
 	private class KeepAliveDaemon implements Runnable {
 
 		/**
-		 * 最后一次发送保活命令时间
+		 * Time the last keep alive command was sent
 		 */
 		private long lastSendKeepAliveCommandTime = System.currentTimeMillis();
 
@@ -290,7 +298,7 @@ public abstract class ConnectionBase implements Connection {
 						synchronized (ConnectionBase.this) {
 							if (System.currentTimeMillis() - lastSendTime > connectionConfigurer.getKeepAliveInterval() &&
 									System.currentTimeMillis() - lastSendKeepAliveCommandTime > connectionConfigurer.getKeepAliveInterval()) {
-								//保活命令不应该修改lastSendTime的值，因此临时保存，保活命令发送完成后恢复
+								// a keep alive command must not change lastSendTime, so save it before and restore it after
 								long tempLastSendTime = lastSendTime;
 								lastSendKeepAliveCommandTime = System.currentTimeMillis();
 								CommandResult commandResult = sendCommand(keepAliveCommand);

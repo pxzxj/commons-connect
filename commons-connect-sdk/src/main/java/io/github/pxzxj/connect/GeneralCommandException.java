@@ -1,7 +1,7 @@
 package io.github.pxzxj.connect;
 
 /**
- * 执行指令通用异常
+ * Common exception for command execution failures
  */
 public class GeneralCommandException extends RuntimeException {
 

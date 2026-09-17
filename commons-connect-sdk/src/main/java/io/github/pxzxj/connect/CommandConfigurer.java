@@ -14,39 +14,39 @@ public class CommandConfigurer {
 
     private String command;
     /**
-     * 生成指令的函数，输入为前面所有指令执行的回显
+     * Function that builds the command from the echo of all previous commands
      */
     private Function<String, String> commandFunction;
 
     /**
-     * 超时时间
+     * Timeout in milliseconds
      */
     private int timeoutMilliSeconds = DEFAULT_WAIT_TIMEOUT;
     /**
-     * 成功标识，成功标识非空时会等待成功标识，
-     * 否则尝试等待失败标识，若失败标识也为空则等默认标识
-     * 默认标识会使用一定不会出现的字符串
+     * Success flags. When they are set, the connection waits for them,
+     * otherwise it waits for the fail flags, and if those are unset too it waits for the default flag.
+     * The default flag is a string that never appears in the output.
      */
     private String[] successFlags;
     /**
-     * 失败标识
+     * Fail flags
      */
     private String[] failFlags;
     /**
-     * more标识
+     * Flag that indicates more output is available
      */
     private String moreFlag;
     /**
-     * 获取下一屏内容需要执行的命令，注意下发该命令时不会自动添加换行符
+     * Command sent to fetch the next screen of output, no newline is appended to it
      */
     private String moreCommand = " ";
     /**
-     * 回车符
+     * Enter key
      */
     private String enter = BACKSLASH_N;
     /**
-     * 下一条指令，如果当前指令的成功标识或失败标识非空则会在当前指令成功后才
-     * 执行下一条指令，否则不判断当前指令是否执行成功
+     * Next command. When the current command has success or fail flags, the next
+     * command runs only after the current one succeeded, otherwise its result is not checked
      */
     private CommandConfigurer next;
 

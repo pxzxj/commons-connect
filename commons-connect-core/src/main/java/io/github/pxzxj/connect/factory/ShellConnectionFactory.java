@@ -18,7 +18,7 @@ public class ShellConnectionFactory implements ConnectionFactory {
     private static final Logger logger = LoggerFactory.getLogger(ShellConnectionFactory.class);
 
     @Override
-    public boolean support(ConnectionConfigurer connectionConfigurer) {
+    public boolean supports(ConnectionConfigurer connectionConfigurer) {
         return ConnectionConfigurer.TYPE_SHELL.equalsIgnoreCase(connectionConfigurer.getType());
     }
 

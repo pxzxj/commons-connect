@@ -7,7 +7,7 @@ public interface Connection extends AutoCloseable {
     long getCreateTime();
 
     /**
-     * 连接后回显，例如ssh motd
+     * Echo received after connecting, e.g. the ssh motd
      * @return
      */
     String getPostConnectOutput();
@@ -15,20 +15,20 @@ public interface Connection extends AutoCloseable {
     ConnectionConfigurer getConnectionConfigurer();
 
     /**
-     * 发送命令并获取回显
-     * @param commandConfigurer 命令配置
-     * @return 执行结果
+     * Sends a command and returns its echo
+     * @param commandConfigurer command configuration
+     * @return command execution result
      */
     CommandResult sendCommand(CommandConfigurer commandConfigurer);
 
     /**
-     * 连接是否正常
+     * Whether the connection is still alive
      * @return
      */
     boolean isConnected();
 
     /**
-     * 关闭连接
+     * Closes the connection
      */
     void close();
 

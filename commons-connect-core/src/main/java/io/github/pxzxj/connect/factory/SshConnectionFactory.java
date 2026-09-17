@@ -19,7 +19,7 @@ public class SshConnectionFactory implements ConnectionFactory {
     }
 
     @Override
-    public boolean support(ConnectionConfigurer connectionConfigurer) {
+    public boolean supports(ConnectionConfigurer connectionConfigurer) {
         return ConnectionConfigurer.TYPE_SSH.equalsIgnoreCase(connectionConfigurer.getType());
     }
 

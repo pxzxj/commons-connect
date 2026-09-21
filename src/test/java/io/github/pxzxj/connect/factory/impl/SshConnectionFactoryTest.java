@@ -1,6 +1,7 @@
 package io.github.pxzxj.connect.factory.impl;
 
 import io.github.pxzxj.connect.ConnectionConfigurerBuilder;
+import io.github.pxzxj.connect.GeneralConnectionException;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -39,10 +40,10 @@ class SshConnectionFactoryTest {
 	}
 
 	@Test
-	void createConnection_withoutPassword_failsFast() {
-		NullPointerException exception = assertThrows(NullPointerException.class, () -> factory.createConnection(
-				ConnectionConfigurerBuilder.ssh().host("127.0.0.1").username("root").build()));
+	void createConnection_withoutPasswordAndPrivateKey_failsWithGeneralConnectionException() {
+		GeneralConnectionException exception = assertThrows(GeneralConnectionException.class, () -> factory.createConnection(
+				ConnectionConfigurerBuilder.ssh().host("127.0.0.1").port(1).username("root").build()));
 
-		assertEquals("password cannot be null!", exception.getMessage());
+		assertTrue(exception.getMessage().contains("create ssh connection error"));
 	}
 }

@@ -186,7 +186,6 @@ class TelnetConnectionFactoryEmbeddedServerTest {
 
 	private ConnectionConfigurerBuilder configurerBuilder() {
 		return ConnectionConfigurerBuilder.telnet()
-				.id("telnet-test-1")
 				.host(HOST)
 				.port(port)
 				.charset(deviceCharset.name())

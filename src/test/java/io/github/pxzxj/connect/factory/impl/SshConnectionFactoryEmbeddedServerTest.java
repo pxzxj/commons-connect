@@ -1,5 +1,8 @@
 package io.github.pxzxj.connect.factory.impl;
 
+import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.KeyPair;
+
 import io.github.pxzxj.connect.CommandConfigurer;
 import io.github.pxzxj.connect.CommandConfigurerBuilder;
 import io.github.pxzxj.connect.CommandResult;
@@ -18,6 +21,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -25,6 +29,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.Reader;
 import java.io.UnsupportedEncodingException;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -48,6 +53,8 @@ class SshConnectionFactoryEmbeddedServerTest {
 
 	private static final String PASSWORD = "secret";
 
+	private static final String PASSPHRASE = "key-passphrase";
+
 	private static final String PROMPT = "fake$ ";
 
 	private static final String LOGIN_BANNER = "Welcome to embedded sshd\r\n" + PROMPT;
@@ -58,6 +65,13 @@ class SshConnectionFactoryEmbeddedServerTest {
 
 	private int port;
 
+	@TempDir
+	Path tempDir;
+
+	private String privateKeyPath;
+
+	private String encryptedPrivateKeyPath;
+
 	private List<String> receivedLines;
 
 	private List<String> receivedInputs;
@@ -66,15 +80,25 @@ class SshConnectionFactoryEmbeddedServerTest {
 	void startEmbeddedSshServer() throws Exception {
 		receivedLines = new CopyOnWriteArrayList<>();
 		receivedInputs = new CopyOnWriteArrayList<>();
+		privateKeyPath = writeKeyPair(KeyPair.RSA, null, "id_rsa");
+		encryptedPrivateKeyPath = writeKeyPair(KeyPair.RSA, PASSPHRASE.getBytes("utf-8"), "id_rsa_encrypted");
 		sshServer = SshServer.setUpDefaultServer();
 		sshServer.setHost(HOST);
 		sshServer.setPort(0);
 		sshServer.setKeyPairProvider(new SimpleGeneratorHostKeyProvider());
 		sshServer.setPasswordAuthenticator(
 				(username, password, session) -> USERNAME.equals(username) && PASSWORD.equals(password));
+		sshServer.setPublickeyAuthenticator((username, key, session) -> USERNAME.equals(username));
 		sshServer.setShellFactory(channel -> new FakeShellCommand(receivedLines, receivedInputs));
 		sshServer.start();
 		port = sshServer.getPort();
+	}
+
+	private String writeKeyPair(int type, byte[] passphrase, String fileName) throws Exception {
+		KeyPair keyPair = KeyPair.genKeyPair(new JSch(), type, 2048);
+		String path = tempDir.resolve(fileName).toString();
+		keyPair.writePrivateKey(path, passphrase);
+		return path;
 	}
 
 	@AfterEach
@@ -175,16 +199,78 @@ class SshConnectionFactoryEmbeddedServerTest {
 		GeneralConnectionException exception = assertThrows(GeneralConnectionException.class,
 				() -> factory().createConnection(configurerBuilder().password("wrong-password").build()));
 
-		assertTrue(exception.getMessage().contains("Auth fail"), "actual message: " + exception.getMessage());
+		assertTrue(exception.getMessage().contains("create ssh connection error"),
+				"actual message: " + exception.getMessage());
+		assertTrue(exception.getCause().getMessage().contains("Auth fail"),
+				"actual cause: " + exception.getCause().getMessage());
+	}
+
+	@Test
+	void createConnection_withPrivateKey_authenticatesWithoutPassword() throws Exception {
+		Connection connection = factory().createConnection(publicKeyConfigurerBuilder()
+				.privateKey(privateKeyPath)
+				.postConnect(command("whoami"))
+				.build());
+
+		try {
+			assertTrue(connection.isConnected());
+			assertTrue(connection.getPostConnectOutput().contains("[whoami]"),
+					"actual echo: " + connection.getPostConnectOutput());
+			assertEquals(Arrays.asList("whoami"), receivedLines);
+		}
+		finally {
+			connection.close();
+		}
+	}
+
+	@Test
+	void createConnection_withEncryptedPrivateKey_authenticates() throws Exception {
+		Connection connection = factory().createConnection(publicKeyConfigurerBuilder()
+				.privateKey(encryptedPrivateKeyPath)
+				.passphrase(PASSPHRASE)
+				.build());
+
+		try {
+			assertTrue(connection.isConnected());
+		}
+		finally {
+			connection.close();
+		}
+	}
+
+	@Test
+	void createConnection_encryptedPrivateKeyWithWrongPassphrase_fails() {
+		assertThrows(GeneralConnectionException.class,
+				() -> factory().createConnection(publicKeyConfigurerBuilder()
+						.privateKey(encryptedPrivateKeyPath)
+						.passphrase("wrong-passphrase")
+						.build()));
+	}
+
+	@Test
+	void createConnection_encryptedPrivateKeyWithoutPassphrase_fails() {
+		assertThrows(GeneralConnectionException.class,
+				() -> factory().createConnection(publicKeyConfigurerBuilder()
+						.privateKey(encryptedPrivateKeyPath)
+						.build()));
 	}
 
 	private ConnectionConfigurer configurer() {
 		return configurerBuilder().build();
 	}
 
+	private ConnectionConfigurerBuilder publicKeyConfigurerBuilder() {
+		return ConnectionConfigurerBuilder.ssh()
+				.host(HOST)
+				.port(port)
+				.username(USERNAME)
+				.successFlags(PROMPT)
+				.timeoutMilliSeconds(TIMEOUT)
+				.keepAliveCommand("");
+	}
+
 	private ConnectionConfigurerBuilder configurerBuilder() {
 		return ConnectionConfigurerBuilder.ssh()
-				.id("ssh-test-1")
 				.host(HOST)
 				.port(port)
 				.username(USERNAME)

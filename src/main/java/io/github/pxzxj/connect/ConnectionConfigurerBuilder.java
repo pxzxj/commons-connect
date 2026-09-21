@@ -12,6 +12,10 @@ public class ConnectionConfigurerBuilder {
     private String charset;
     private String username;
     private String password;
+	private String privateKey;
+	private String passphrase;
+	private String knownHosts;
+	private boolean strictHostKeyChecking;
     private CommandConfigurer postConnect;
     private CommandConfigurer preDisconnect;
     private String[] successFlags;
@@ -21,7 +25,7 @@ public class ConnectionConfigurerBuilder {
     private String keepAliveCommand;
     private String keepAliveWaitStr;
     private int keepAliveWaitTimeout;
-    private Map<String, Object> extAttrs = new HashMap<>();
+    private Map<String, String> extAttrs = new HashMap<>();
 
     private ConnectionConfigurerBuilder(){}
 
@@ -80,6 +84,26 @@ public class ConnectionConfigurerBuilder {
         return this;
     }
 
+	public ConnectionConfigurerBuilder privateKey(String privateKey){
+		this.privateKey = privateKey;
+		return this;
+	}
+
+	public ConnectionConfigurerBuilder passphrase(String passphrase){
+		this.passphrase = passphrase;
+		return this;
+	}
+
+	public ConnectionConfigurerBuilder knownHosts(String knownHosts){
+		this.knownHosts = knownHosts;
+		return this;
+	}
+
+	public ConnectionConfigurerBuilder strictHostKeyChecking(boolean strictHostKeyChecking) {
+		this.strictHostKeyChecking = strictHostKeyChecking;
+		return this;
+	}
+
     public ConnectionConfigurerBuilder postConnect(CommandConfigurer postConnect){
         this.postConnect = postConnect;
         return this;
@@ -125,7 +149,7 @@ public class ConnectionConfigurerBuilder {
         return this;
     }
 
-    public ConnectionConfigurerBuilder extAttrs(Map<String, Object> extAttrs){
+    public ConnectionConfigurerBuilder extAttrs(Map<String, String> extAttrs){
         this.extAttrs = extAttrs;
         return this;
     }
@@ -143,6 +167,10 @@ public class ConnectionConfigurerBuilder {
         }
         connectionConfigurer.setUsername(username);
         connectionConfigurer.setPassword(password);
+		connectionConfigurer.setPrivateKey(privateKey);
+		connectionConfigurer.setPassphrase(passphrase);
+		connectionConfigurer.setKnownHosts(knownHosts);
+		connectionConfigurer.setStrictHostKeyChecking(strictHostKeyChecking);
         connectionConfigurer.setPostConnect(postConnect);
         connectionConfigurer.setPreDisconnect(preDisconnect);
         connectionConfigurer.setSuccessFlags(successFlags);

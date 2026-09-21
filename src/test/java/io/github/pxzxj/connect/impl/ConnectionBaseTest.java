@@ -155,6 +155,7 @@ class ConnectionBaseTest {
 		CommandConfigurer first = baseCommand("list").timeoutMilliSeconds(STAGED_TIMEOUT).successFlags("ok>").build();
 		first.setNext(CommandConfigurerBuilder
 				.newCommandConfigurer((Function<String, String>) echo -> "reply-" + echo.trim())
+				.enter(CommandConfigurer.BACKSLASH_N)
 				.timeoutMilliSeconds(STAGED_TIMEOUT)
 				.successFlags("bye>")
 				.build());
@@ -190,7 +191,6 @@ class ConnectionBaseTest {
 	@Test
 	void sendCommand_decodesEchoWithConfiguredCharset() throws Exception {
 		io.github.pxzxj.connect.ConnectionConfigurer configurer = ConnectionConfigurerBuilder.type(ConnectionConfigurer.TYPE_TELNET)
-				.id("test-conn")
 				.charset("GBK")
 				.timeoutMilliSeconds(TIMEOUT)
 				.keepAliveCommand("")
@@ -248,7 +248,6 @@ class ConnectionBaseTest {
 	@Test
 	void postConnect_noFlagConfigured_waitsForDefaultFlagWithoutFailing() throws Exception {
 		ConnectionConfigurer configurer = ConnectionConfigurerBuilder.ssh()
-				.id("test-conn")
 				.timeoutMilliSeconds(TIMEOUT)
 				.keepAliveCommand("")
 				.build();
@@ -268,7 +267,6 @@ class ConnectionBaseTest {
 		PipedOutputStream device = new PipedOutputStream(in);
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		ConnectionConfigurer configurer = ConnectionConfigurerBuilder.ssh()
-				.id("test-conn")
 				.timeoutMilliSeconds(STAGED_TIMEOUT)
 				.keepAliveCommand("")
 				.successFlags("bash$ ")
@@ -289,7 +287,6 @@ class ConnectionBaseTest {
 		PipedOutputStream device = new PipedOutputStream(in);
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		ConnectionConfigurer configurer = ConnectionConfigurerBuilder.ssh()
-				.id("test-conn")
 				.timeoutMilliSeconds(STAGED_TIMEOUT)
 				.keepAliveCommand("")
 				.successFlags("bash$ ")
@@ -319,7 +316,6 @@ class ConnectionBaseTest {
 
 	private static ConnectionConfigurer configurer(String... successFlags) {
 		return ConnectionConfigurerBuilder.type(ConnectionConfigurer.TYPE_TELNET)
-				.id("test-conn")
 				.successFlags(successFlags)
 				.timeoutMilliSeconds(TIMEOUT)
 				.keepAliveCommand("")
@@ -327,7 +323,9 @@ class ConnectionBaseTest {
 	}
 
 	private static CommandConfigurerBuilder baseCommand(String command) {
-		return CommandConfigurerBuilder.newCommandConfigurer(command).timeoutMilliSeconds(TIMEOUT);
+		// an explicit LF keeps these tests platform independent, the default enter differs between platforms
+		return CommandConfigurerBuilder.newCommandConfigurer(command).enter(CommandConfigurer.BACKSLASH_N)
+				.timeoutMilliSeconds(TIMEOUT);
 	}
 
 	private static InputStream input(String text) throws UnsupportedEncodingException {

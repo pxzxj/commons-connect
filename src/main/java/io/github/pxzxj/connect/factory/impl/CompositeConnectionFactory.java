@@ -28,7 +28,7 @@ public class CompositeConnectionFactory implements ConnectionFactory {
     @Override
     public Connection createConnection(ConnectionConfigurer connectionConfigurer) throws GeneralConnectionException {
         return delegates.stream().filter(f -> f.supports(connectionConfigurer))
-                                .findFirst().orElse(new TelnetConnectionFactory())
+                                .findFirst().orElseThrow(() -> new IllegalArgumentException("Unsupported ConnectionConfigurer"))
                                 .createConnection(connectionConfigurer);
     }
 }

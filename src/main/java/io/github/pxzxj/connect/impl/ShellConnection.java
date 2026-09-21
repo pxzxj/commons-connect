@@ -130,16 +130,18 @@ public class ShellConnection implements Connection {
 		}
 		boolean success = true;
 		CommandConfigurer failCommand = null;
-		synchronized (outputBuffer) {
-			outputBuffer.setLength(0);
-			offset = 0;
-		}
+		// The order matters: the volatile write of offset happens-before the setLength below (a monitor operation),
+		// and the reader acquires the same monitor to call length(), so it can never observe a length of 0 together
+		// with an offset left over from the previous command. Swapping these two lines would make the reader's
+		// substring(offset) throw StringIndexOutOfBoundsException.
+		offset = 0;
+		outputBuffer.setLength(0);
         while (cc != null) {
 			String lastOutput = "";
 			if(outputBuffer.length() > 0){
 				lastOutput = outputBuffer.substring(offset);
 			}
-            offset = outputBuffer.length();
+			offset = outputBuffer.length();
             if (cc.getCommand() == null && cc.getCommandFunction() == null) {
 				return CommandResult.failResult("command and commandFunction cannot be null in same time");
             }
@@ -221,18 +223,15 @@ public class ShellConnection implements Connection {
                     if(len == -1) {
                         break;
                     }
-					synchronized (outputBuffer) {
-						int fromIndex = outputBuffer.length();
-						outputBuffer.append(buffer, 0, len);
-						boolean failed = matchFlags(currentCommandConfigurer.getFailFlags(), fromIndex);
-						boolean success = ArrayUtils.isEmpty(currentCommandConfigurer.getSuccessFlags()) && ArrayUtils.isEmpty(currentCommandConfigurer.getFailFlags());
-						if(!failed) {
-							success = matchFlags(currentCommandConfigurer.getSuccessFlags(), fromIndex);
-						}
-						if(success | failed) {
-							String output = outputBuffer.substring(fromIndex);
-							currentCommandResult = success ? CommandResult.successfulResult(output) : CommandResult.failResult(output);
-						}
+					outputBuffer.append(buffer, 0, len);
+					boolean failed = matchFlags(currentCommandConfigurer.getFailFlags());
+					boolean success = ArrayUtils.isEmpty(currentCommandConfigurer.getSuccessFlags()) && ArrayUtils.isEmpty(currentCommandConfigurer.getFailFlags());
+					if(!failed) {
+						success = matchFlags(currentCommandConfigurer.getSuccessFlags());
+					}
+					if(success | failed) {
+						String output = outputBuffer.substring(offset);
+						currentCommandResult = success ? CommandResult.successfulResult(output) : CommandResult.failResult(output);
 					}
                 }
             } catch (IOException e) {
@@ -241,16 +240,12 @@ public class ShellConnection implements Connection {
 			logger.info("{} Terminated", Thread.currentThread().getName());
         }
 
-        private boolean matchFlags(String[] flags, int fromIndex) {
+        private boolean matchFlags(String[] flags) {
             if(flags == null) {
                 return false;
             }
             for(String flag : flags) {
-                int fi = fromIndex;
-                if(fi - flag.length() > offset) {
-                    fi = fi - flag.length();
-                }
-                if(outputBuffer.indexOf(flag, fi) != -1) {
+                if(outputBuffer.indexOf(flag, offset) != -1) {
                     return true;
                 }
             }

@@ -52,12 +52,12 @@ class CompositeConnectionFactoryTest {
 	}
 
 	@Test
-	void createConnection_withoutSupportingDelegate_fallsBackToTelnetFactory() {
+	void createConnection_withoutSupportingDelegate_throwsIllegalArgumentException() {
 		CompositeConnectionFactory factory = new CompositeConnectionFactory(Collections.emptyList());
 
-		NullPointerException exception = assertThrows(NullPointerException.class,
+		IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
 				() -> factory.createConnection(ConnectionConfigurerBuilder.type("unknown").build()));
 
-		assertEquals("host cannot be null!", exception.getMessage());
+		assertEquals("Unsupported ConnectionConfigurer", exception.getMessage());
 	}
 }

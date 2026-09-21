@@ -84,7 +84,7 @@ class ShellConnectionTest {
 	}
 
 	@Test
-	void constructor_exposesPtyProcessAndConnectionId() throws Exception {
+	void constructor_exposesPtyProcess() throws Exception {
 		ShellConnection connection = newConnection(configurer("bash$ "));
 
 		assertSame(ptyProcess, connection.getPtyProcess());
@@ -144,9 +144,9 @@ class ShellConnectionTest {
 	}
 
 	@Test
-	void postConnect_keepAliveCommandConfigured_startsKeepAliveThreadNamedByConnectionId() throws Exception {
+	void postConnect_keepAliveCommandConfigured_startsKeepAliveThreadNamedByPid() throws Exception {
 		ShellConnection connection = newConnection(ConnectionConfigurerBuilder.shell()
-				.id("shell-1")
+				.keepAliveCommand("whoami")
 				.timeoutMilliSeconds(TIMEOUT)
 				.build());
 		try {
@@ -154,7 +154,7 @@ class ShellConnectionTest {
 
 			connection.postConnect();
 
-			assertTrue(keepAliveThreadStarted("KeepAliveDaemon shell-1"));
+			assertTrue(keepAliveThreadStarted("KeepAliveDaemon " + ptyProcess.pid()));
 		}
 		finally {
 			connection.close();
@@ -167,6 +167,7 @@ class ShellConnectionTest {
 		deviceResponds("file1\r\nfile2\r\n__DONE__");
 
 		CommandResult commandResult = connection.sendCommand(io.github.pxzxj.connect.CommandConfigurerBuilder.newCommandConfigurer("ls")
+				.enter(io.github.pxzxj.connect.CommandConfigurer.BACKSLASH_N)
 				.timeoutMilliSeconds(STAGED_TIMEOUT)
 				.successFlags("__DONE__")
 				.build());
@@ -229,6 +230,7 @@ class ShellConnectionTest {
 		ShellConnection connection = newConnection(shellConfigurer()
 				.successFlags("bash$ ")
 				.preDisconnect(CommandConfigurerBuilder.newCommandConfigurer("exit")
+						.enter(CommandConfigurer.BACKSLASH_N)
 						.timeoutMilliSeconds(STAGED_TIMEOUT)
 						.successFlags("bye>")
 						.build())
@@ -264,7 +266,6 @@ class ShellConnectionTest {
 
 	private static ConnectionConfigurerBuilder shellConfigurer() {
 		return ConnectionConfigurerBuilder.shell()
-				.id("shell-1")
 				.timeoutMilliSeconds(TIMEOUT)
 				.keepAliveCommand("");
 	}

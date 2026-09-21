@@ -1,8 +1,6 @@
-:toc:
 = commons-connect
 
 link:README_en.adoc[English] | 中文
-
 
 == 简介
 
@@ -11,30 +9,27 @@ link:README_en.adoc[English] | 中文
 commons-connect 为连接设备和下发指令提供了简单易用的 API，主要特性如下
 
 * 支持 SSH、TELNET、SHELL 三种连接类型，且可以自行扩展
-* 连接参数（包含完整的登录过程）都保存在 `ConnectionConfigurer` 里，可 JSON 序列化后入库，按需下发
-* 支持指令链：每条指令可单独配置成功/失败标识、超时、分屏标识，上一条成功才下发下一条
-* 内置回显解析，编码可配置，支持分屏输出与保活命令
-* 连接相关的日志都带 `id: {connectionId}`，便于区分同一进程内的多个连接
+* 支持配置指令执行的成功/识别标识和超时时间
+* 支持类似--More--的分屏指令
+* 支持多条指令链式执行，有一条执行识别就终止
+* 支持连接keep-alive
 
 === 要求
 
 * JDK 1.8+
 
 === 安装
-在项目的pom文件中引入commons-connect-core依赖并配置本地maven仓库
 
 [source,xml,subs="verbatim"]
 ----
-    <dependencies>
         <dependency>
             <groupId>io.github.pxzxj</groupId>
-            <artifactId>commons-connect-core</artifactId>
+            <artifactId>commons-connect</artifactId>
             <version>0.1.0</version>
         </dependency>
-    </dependencies>
 ----
 
-=== 使用
+=== 快速开始
 
 下面是一个简单的使用示例
 [source,java,subs="verbatim"]
@@ -42,17 +37,13 @@ commons-connect 为连接设备和下发指令提供了简单易用的 API，主
 public class StartConnect {
 
     public static void main(String[] args){
-        ConnectionFactory connectionFactory = new CompositeConnectionFactory(new SshConnectionFactory(), new TelnetConnectionFactory());
         ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.ssh()
                                                     .host("192.168.3.1")
                                                     .port(22)
                                                     .username("root")
                                                     .password("")
-                                                    .charset("utf-8")
-                                                    .successFlags("#")
-                                                    .postConnect(CommandConfigurerBuilder.newCommandConfigurer("echo 'Hello Linux!'").enter("\n").successFlags("#").build())
                                                     .build();                 // <1>
-        Connection connection = connectionFactory.createConnection(connectionConfigurer);      // <2>
+        Connection connection = new SshConnectionFactory().createConnection(connectionConfigurer);      // <2>
         CommandConfigurer commandConfigurer = CommandConfigurerBuilder.newCommandConfigurer("df -h")
                                                                 .successFlags("#")
                                                                 .next("pwd")
@@ -64,8 +55,7 @@ public class StartConnect {
             System.out.println("执行失败的命令 = " + commandResult.getFailCommand());
         }
         System.out.println("执行回显 = " + commandResult.getResult());
-        System.out.println("登录回显 = " + connection.getPostConnectOutput());           // <5>
-        connection.close();                                                              // <6>
+        connection.close();                                                              // <5>
     }
 }
 ----
@@ -73,8 +63,7 @@ public class StartConnect {
 <2> 创建连接
 <3> 创建指令配置：指令内容、成功/失败标识、下一条指令
 <4> 下发指令，返回结果包含是否成功、失败的指令以及回显
-<5> 登录后的回显，例如 SSH 的 motd、SHELL 的终端提示符
-<6> 关闭连接，会先执行 `preDisconnect` 配置的登出指令
+<5> 关闭连接，会先执行 `preDisconnect` 配置的登出指令
 
 == 架构
 
@@ -88,10 +77,7 @@ image::images/architecture.png[]
 `Connection` 接口表示一个连接，目前有 `SshConnection`、`TelnetConnection`、`ShellConnection` 三个实现，主要包含如下方法
 
 [horizontal]
-`getConnectionId()` :: 连接标识，也就是日志里 `id: {}` 打印的值；没有显式配置 `id` 时，SSH/TELNET 取 host，SHELL 取进程 pid
-`getCreateTime()` :: 连接的创建时间
 `getPostConnectOutput()` :: 登录后的回显，例如 SSH 的 motd
-`getConnectionConfigurer()` :: 创建该连接时使用的配置
 `sendCommand(CommandConfigurer)` :: 下发指令，返回 <<commandResult, CommandResult>>
 `isConnected()` :: 检查连接是否断开
 `close()` :: 关闭连接，会先执行 `preDisconnect` 配置的登出指令
@@ -131,12 +117,6 @@ NOTE: `ConnectionFactory` 的设计借鉴了 `org.springframework.web.method.sup
 |是
 |
 
-|id
-|String
-|连接标识，会作为日志中的 connectionId
-|否
-|SSH/TELNET 取 host，SHELL 取进程 pid
-
 |shellPath
 |String
 |SHELL 类型下启动的终端程序
@@ -153,7 +133,7 @@ NOTE: `ConnectionFactory` 的设计借鉴了 `org.springframework.web.method.sup
 |int
 |连接端口
 |否
-|23（`ConnectionConfigurerBuilder.ssh()` 会设为 22）
+|
 
 |charset
 |String
@@ -213,7 +193,7 @@ NOTE: `ConnectionFactory` 的设计借鉴了 `org.springframework.web.method.sup
 |String
 |保活命令
 |否
-|空格
+|
 
 |keepAliveWaitStr
 |String
@@ -288,7 +268,7 @@ NOTE: `ConnectionConfigurerBuilder` 是 `ConnectionConfigurer` 对应的构建�
 
 |enter
 |String
-|回车符号(执行指令需要在输入指令末尾敲回车)
+|回车符号(执行指令需要在输入指令末尾敲回车，Windows下连接本地shell时必须设为\r，详见「Windows下shell连接的enter」)
 |否
 |\n
 
@@ -311,10 +291,6 @@ NOTE: `CommandConfigurerBuilder` 是 `CommandConfigurer` 对应的构建器类�
 |success
 |boolean
 |执行是否成功
-
-|command
-|CommandConfigurer
-|执行的命令
 
 |failCommand
 |CommandConfigurer
@@ -344,6 +320,255 @@ shell是所有连接类型中最强大的，它模拟了操作系统的命令行
 默认情况下Windows使用 `cmd.exe`，其它操作系统使用 `/bin/bash`，也可以使用 `shellPath` 属性进行配置 +
 
 NOTE: SHELL 连接的回显编码取决于本机终端，例如中文 Windows 下 `cmd.exe` 输出的是 GBK，此时建议把 `charset` 显式设为 GBK，否则回显里的中文会乱码
+
+
+== 使用说明与示例
+
+=== ssh密码登录
+
+使用 `username` 与 `password` 属性进行密码登录，连接由 `SshConnectionFactory` 创建
+
+[source,java,subs="verbatim"]
+----
+ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.ssh()
+        .host("192.168.3.1")
+        .port(22)
+        .username("root")
+        .password("password")
+        .successFlags("#")                                                          // 登录成功的标识
+        .postConnect(CommandConfigurerBuilder.newCommandConfigurer("cd /opt")       // 登录后立即执行的指令
+                .successFlags("#")
+                .build())
+        .build();
+
+Connection connection = new SshConnectionFactory().createConnection(connectionConfigurer);
+----
+
+=== ssh公钥登录
+
+使用 `privateKey` 属性指定私钥文件进行公钥登录，私钥本身有密码时通过 `passphrase` 属性指定
+
+[source,java,subs="verbatim"]
+----
+ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.ssh()
+        .host("192.168.3.1")
+        .username("root")
+        .privateKey("/home/pxzxj/.ssh/id_rsa")
+        .passphrase("passphrase")                       // 私钥没有密码时可以省略
+        .successFlags("#")
+        .build();
+
+Connection connection = new SshConnectionFactory().createConnection(connectionConfigurer);
+----
+
+NOTE: 私钥必须是PEM格式（以 `-----BEGIN RSA PRIVATE KEY-----` 开头），`com.jcraft:jsch:0.1.55` 不支持OpenSSH的新格式（`-----BEGIN OPENSSH PRIVATE KEY-----`）。
+`ssh-keygen` 默认生成的是新格式，生成时需加上 `-m PEM` 参数，否则 `addIdentity` 会抛出 `invalid privatekey`
+
+NOTE: 主机密钥校验通过 `strictHostKeyChecking` 与 `knownHosts` 属性配置
+
+=== telnet登录
+
+Telnet 登录只需要目标地址与端口
+
+[source,java,subs="verbatim"]
+----
+ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.telnet()
+        .host("192.168.3.1")
+        .port(31114)
+        .successFlags("RETCODE = 0")
+        .postConnect(CommandConfigurerBuilder.newCommandConfigurer("LGI:OP=\"user\",PWD=\"pwd\";")
+                .successFlags("RETCODE = 0")
+                .failFlags("RETCODE = 1")
+                .build())
+        .build();
+
+Connection connection = new TelnetConnectionFactory().createConnection(connectionConfigurer);
+----
+
+=== 默认shell登录
+
+不设置 `shellPath` 属性时，Windows 下启动 `cmd.exe`，其它操作系统启动 `/bin/bash --login`
+
+[source,java,subs="verbatim"]
+----
+ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.shell()
+        .charset("GBK")                             // 中文Windows下cmd.exe的回显编码
+        .successFlags(">")
+        .postConnect(CommandConfigurerBuilder.newCommandConfigurer("echo hello")
+                .enter("\r")                        // Windows下必须使用\r，详见下文
+                .successFlags(">")
+                .build())
+        .build();
+
+Connection connection = new ShellConnectionFactory().createConnection(connectionConfigurer);
+----
+
+=== powershell登录
+
+通过 `shellPath` 属性指定 `powershell.exe` 即可；注意 `powershell.exe` 必须把 `enter` 显式设为 `\r`，详见下文的「Windows下shell连接的enter」
+
+[source,java,subs="verbatim"]
+----
+ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.shell()
+        .shellPath("powershell.exe")
+        .charset("GBK")
+        .successFlags(">")
+        .postConnect(CommandConfigurerBuilder.newCommandConfigurer("echo hello")
+                .enter("\r")
+                .successFlags(">")
+                .build())
+        .build();
+----
+
+NOTE: `shellPath` 会作为单个参数传递给终端进程，因此不能在这里附加启动参数
+
+=== Windows下shell连接的enter
+
+`CommandConfigurer.enter` 默认为换行（`\n`），这对SSH、Telnet这类字节流通道是正确的；但Windows下的本地shell运行在真实的pty上，
+`cmd.exe` 与 `powershell.exe` 收到 `\n` 后只会回显命令并不会执行，表现为下发的指令没有反应，因此连接本地shell时必须把 `enter` 显式设为回车（`\r`） +
+
+也不要使用 `\r\n`：`cmd.exe` 可以正常处理，但 `powershell.exe` 会把 `\r` 之后的 `\n` 当作未结束的行，进入续行状态（打印 `>> `）并吞掉后续指令 +
+
+[source,java,subs="verbatim"]
+----
+// SSH、Telnet使用默认的\n即可
+ConnectionConfigurer sshConfigurer = ConnectionConfigurerBuilder.ssh()
+        .host("192.168.3.1")
+        .username("root")
+        .password("password")
+        .successFlags("#")
+        .build();
+
+// Windows下的本地shell必须显式指定\r
+ConnectionConfigurer cmdConfigurer = ConnectionConfigurerBuilder.shell()
+        .shellPath("cmd.exe")
+        .postConnect(CommandConfigurerBuilder.newCommandConfigurer("echo hello")
+                .enter("\r")
+                .successFlags(">")
+                .build())
+        .build();
+
+// powershell.exe同理，enter同样必须是\r
+ConnectionConfigurer powershellConfigurer = ConnectionConfigurerBuilder.shell()
+        .shellPath("powershell.exe")
+        .postConnect(CommandConfigurerBuilder.newCommandConfigurer("echo hello")
+                .enter("\r")
+                .successFlags(">")
+                .build())
+        .build();
+----
+
+NOTE: 使用链式指令时 `next` 不会继承上一条指令的 `enter`，每一条指令都需要单独设置
+
+NOTE: 使用JSON配置时同样需要在每个指令中设置 `enter`
+
+=== KeepAlive
+
+连接空闲时间超过 `keepAliveInterval` 后会发送 `keepAliveCommand`，并等待回显中出现 `keepAliveWaitStr`，等待回显的超时时间为 `keepAliveWaitTimeout`，
+因此可以通过保活指令的执行结果判断连接是否正常
+
+[source,java,subs="verbatim"]
+----
+ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.ssh()
+        .host("192.168.3.1")
+        .username("root")
+        .password("password")
+        .successFlags("#")
+        .keepAliveCommand("pwd")                        // 空闲时发送的保活指令
+        .keepAliveWaitStr("#")                          // 保活指令等待的回显
+        .keepAliveInterval(60000)                       // 空闲多久后发送，单位毫秒，默认60000
+        .keepAliveWaitTimeout(2000)                     // 等待回显的超时时间，单位毫秒，默认2000
+        .build();
+----
+
+NOTE: 不设置 `keepAliveCommand` 时不会启动保活线程
+
+NOTE: `keepAliveWaitStr` 默认为一个不会出现在回显中的字符串，此时只能等到超时才知道保活结果，建议设置为设备实际的提示符
+
+[[compositeConnectionFactory]]
+=== CompositeConnectionFactory
+
+将 `ConnectionFactory` 声明为 `Bean` 后可以在不同的Service中直接注入，`CompositeConnectionFactory` 是 `ConnectionFactory` 的组合模式的实现，使用 `CompositeConnectionFactory` 就无需再遍历所有 `ConnectionFactory` 的 `Bean`
+
+[source,java,subs="verbatim"]
+----
+ConnectionFactory connectionFactory = new CompositeConnectionFactory(
+        new SshConnectionFactory(), new TelnetConnectionFactory(), new ShellConnectionFactory());
+Connection connection = connectionFactory.createConnection(connectionConfigurer);
+----
+
+NOTE: 没有 `supports()` 返回 true 的实现类时会抛出 `IllegalArgumentException`
+
+=== 下发指令
+
+`sendCommand()` 返回 `CommandResult`，其中包含是否执行成功、执行失败的指令以及回显
+
+[source,java,subs="verbatim"]
+----
+CommandConfigurer commandConfigurer = CommandConfigurerBuilder.newCommandConfigurer("df -h")
+        .successFlags("#")                                      // 回显中匹配到该标识表示执行成功
+        .failFlags("No such file or directory")                 // 回显中匹配到该标识表示执行失败，可选
+        .timeoutMilliSeconds(5000)                              // 等待标识的超时时间，单位毫秒，默认5000
+        .build();
+
+CommandResult commandResult = connection.sendCommand(commandConfigurer);
+System.out.println("是否执行成功 = " + commandResult.isSuccess());
+System.out.println("执行回显 = " + commandResult.getResult());
+if(!commandResult.isSuccess()) {
+    System.out.println("执行失败的命令 = " + commandResult.getFailCommand());
+}
+----
+
+=== More分屏
+
+moreCommand会持续发送，因为在实践中发现检查到--More--再发送下一屏指令不能有预期效果
+
+[source,java,subs="verbatim"]
+----
+CommandConfigurer commandConfigurer = CommandConfigurerBuilder.newCommandConfigurer("cat bigfile")
+        .successFlags("#")
+        .moreFlag("--More--")                       // 回显中出现该标识表示还有下一屏
+        .moreCommand(" ")                           // 等待期间持续发送的指令，默认空格
+        .build();
+----
+
+=== 多条指令
+
+使用 `next()` 配置下一条指令，多条指令共用一次 `sendCommand()`，任意一条匹配到失败标识就终止，不会再执行后续指令
+
+[source,java,subs="verbatim"]
+----
+CommandConfigurer commandConfigurer = CommandConfigurerBuilder.newCommandConfigurer("cd /opt")
+        .successFlags("#")
+        .next("ls")                                 // 上一条执行成功后才执行
+        .successFlags("#")
+        .next("cat app.log")
+        .successFlags("#")
+        .build();                                   // build()返回的是第一条指令
+----
+
+NOTE: `next()` 不会继承上一条指令的配置，每一条指令都要单独配置成功标识、超时时间以及「Windows下shell连接的enter」中提到的 `enter` 等属性
+
+NOTE: 也可以通过 `CommandConfigurer.setNext()` 组装指令链，此时 `CommandResult.getResult()` 是整条指令链的回显
+
+=== commandFunction
+
+`commandFunction` 用于根据上一条指令的回显动态生成指令内容，它的入参就是上一条指令的回显
+
+[source,java,subs="verbatim"]
+----
+CommandConfigurer listFiles = CommandConfigurerBuilder.newCommandConfigurer("ls /opt")
+        .successFlags("#")
+        .build();
+CommandConfigurer catFirstFile = CommandConfigurerBuilder
+        .newCommandConfigurer(echo -> "cat /opt/" + echo.trim())        // <1>
+        .successFlags("#")
+        .build();
+listFiles.setNext(catFirstFile);
+
+connection.sendCommand(listFiles);
+----
+<1> 从 `ls` 的回显中取出文件名，拼出下一条指令
 
 
 == 最佳实践
@@ -391,48 +616,7 @@ commons-connect将所有的登录过程都保存在 `ConnectionConfigurer` 对�
 }
 ----
 
-[[compositeConnectionFactory]]
-=== CompositeConnectionFactory
 
-将 `ConnectionFactory` 声明为 `Bean` 后可以在不同的Service中直接注入，`CompositeConnectionFactory` 是 `ConnectionFactory` 的组合模式的实现，使用 `CompositeConnectionFactory` 就无需再遍历所有 `ConnectionFactory` 的 `Bean`
-
-[source,java,subs="verbatim"]
-----
-@Configuration
-public class ConnectConfiguration {
-
-    @Bean
-    public TelnetConnectionFactory telnetConnectionFactory(){
-        return new TelnetConnectionFactory();
-    }
-
-    @Bean
-    public SshConnectionFactory sshConnectionFactory(){
-        return new SshConnectionFactory();
-    }
-
-    @Bean
-    @Primary
-    public CompositeConnectionFactory compositeConnectionFactory(List<ConnectionFactory> delegates){
-        return new CompositeConnectionFactory(delegates);
-    }
-
-}
-
-@Service
-public class ConnectService {
-
-    @Autowired
-    private ConnectionFactory connectionFactory;
-
-    public Connection connect(ConnectionConfigurer connectionConfigurer){
-        if(connectionFactory.supports(connectionConfigurer)) {
-            return connectionFactory.createConnection(connectionConfigurer);
-        }
-        return null;
-    }
-}
-----
 
 == todo
 

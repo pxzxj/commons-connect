@@ -2,3 +2,6 @@
 *.iml
 target/
 .qwen/
+
+# Local, machine specific test configuration (holds the WSL ssh password)
+/src/test/resources/local-wsl.properties

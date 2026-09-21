@@ -6,8 +6,6 @@ import java.util.Map;
 
 public class ConnectionConfigurer {
 
-    private static final String DEFAULT_KEEP_ALIVE_COMMAND = " ";
-
     public static final String TYPE_SSH = "ssh";
 
     public static final String TYPE_TELNET = "telnet";
@@ -31,6 +29,28 @@ public class ConnectionConfigurer {
      * Login password
      */
     private String password;
+
+	/**
+	 * ssh privateKey
+	 */
+	private String privateKey;
+
+	/**
+	 * ssh privateKey passphrase
+	 */
+	private String passphrase;
+
+	/**
+	 * ssh known_hosts
+	 */
+	private String knownHosts;
+
+	/**
+	 * ssh strictHostKeyChecking
+	 */
+	private boolean strictHostKeyChecking;
+
+
     /**
      * Command sent right after a successful login
      */
@@ -58,7 +78,7 @@ public class ConnectionConfigurer {
     /**
      * Keep alive command
      */
-    private String keepAliveCommand = DEFAULT_KEEP_ALIVE_COMMAND;
+    private String keepAliveCommand;
     /**
      * Echo awaited for the keep alive command
      */
@@ -68,7 +88,7 @@ public class ConnectionConfigurer {
      */
     private int keepAliveWaitTimeout = 2000;
 
-    private Map<String, Object> extAttrs = new HashMap<>();
+    private Map<String, String> extAttrs = new HashMap<>();
 
     public String getType() {
         return type;
@@ -126,7 +146,39 @@ public class ConnectionConfigurer {
         this.password = password;
     }
 
-    public CommandConfigurer getPostConnect() {
+	public String getPrivateKey() {
+		return privateKey;
+	}
+
+	public void setPrivateKey(String privateKey) {
+		this.privateKey = privateKey;
+	}
+
+	public String getPassphrase() {
+		return passphrase;
+	}
+
+	public void setPassphrase(String passphrase) {
+		this.passphrase = passphrase;
+	}
+
+	public String getKnownHosts() {
+		return knownHosts;
+	}
+
+	public void setKnownHosts(String knownHosts) {
+		this.knownHosts = knownHosts;
+	}
+
+	public boolean isStrictHostKeyChecking() {
+		return strictHostKeyChecking;
+	}
+
+	public void setStrictHostKeyChecking(boolean strictHostKeyChecking) {
+		this.strictHostKeyChecking = strictHostKeyChecking;
+	}
+
+	public CommandConfigurer getPostConnect() {
         return postConnect;
     }
 
@@ -198,11 +250,11 @@ public class ConnectionConfigurer {
         this.keepAliveWaitTimeout = keepAliveWaitTimeout;
     }
 
-    public Map<String, Object> getExtAttrs() {
+    public Map<String, String> getExtAttrs() {
         return extAttrs;
     }
 
-    public void setExtAttrs(Map<String, Object> extAttrs) {
+    public void setExtAttrs(Map<String, String> extAttrs) {
         this.extAttrs = extAttrs;
     }
 

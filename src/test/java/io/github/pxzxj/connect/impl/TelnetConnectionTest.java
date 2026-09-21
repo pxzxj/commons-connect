@@ -95,7 +95,6 @@ class TelnetConnectionTest {
 
 	private static ConnectionConfigurer configurer(CommandConfigurer preDisconnect) {
 		return ConnectionConfigurerBuilder.telnet()
-				.id("telnet-1")
 				.timeoutMilliSeconds(TIMEOUT)
 				.keepAliveCommand("")
 				.preDisconnect(preDisconnect)
@@ -103,7 +102,9 @@ class TelnetConnectionTest {
 	}
 
 	private static CommandConfigurer preDisconnectCommand(String command, String successFlag) {
+		// an explicit LF keeps this test platform independent, the default enter differs between platforms
 		return io.github.pxzxj.connect.CommandConfigurerBuilder.newCommandConfigurer(command)
+				.enter(io.github.pxzxj.connect.CommandConfigurer.BACKSLASH_N)
 				.timeoutMilliSeconds(TIMEOUT)
 				.successFlags(successFlag)
 				.build();

@@ -96,7 +96,7 @@ class ConnectionConfigurerBuilderTest {
 		assertEquals("utf-8", configurer.getCharset());
 		assertEquals(5000, configurer.getTimeoutMilliSeconds());
 		assertEquals(60000, configurer.getKeepAliveInterval());
-		assertEquals(" ", configurer.getKeepAliveCommand());
+		assertNull(configurer.getKeepAliveCommand());
 		assertEquals(CommandConfigurer.DEFAULT_WAIT_STR, configurer.getKeepAliveWaitStr());
 		assertEquals(2000, configurer.getKeepAliveWaitTimeout());
 		assertTrue(configurer.getExtAttrs().isEmpty());
@@ -111,7 +111,7 @@ class ConnectionConfigurerBuilderTest {
 				.build();
 
 		assertEquals("utf-8", configurer.getCharset());
-		assertEquals(" ", configurer.getKeepAliveCommand());
+		assertNull(configurer.getKeepAliveCommand());
 		assertEquals(CommandConfigurer.DEFAULT_WAIT_STR, configurer.getKeepAliveWaitStr());
 	}
 

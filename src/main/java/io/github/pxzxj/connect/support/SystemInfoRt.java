@@ -4,7 +4,7 @@ package io.github.pxzxj.connect.support;
 import java.util.Locale;
 
 /**
- * A stripped-down version of {@link com.intellij.openapi.util.SystemInfo}.
+ * A stripped-down version of com.intellij.openapi.util.SystemInfo.
  * Intended to use by external (out-of-IDE-process) runners and helpers so it should not contain any library dependencies.
  */
 public final class SystemInfoRt {

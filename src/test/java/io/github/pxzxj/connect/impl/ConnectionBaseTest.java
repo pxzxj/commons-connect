@@ -34,23 +34,6 @@ class ConnectionBaseTest {
 	private static final int STAGED_TIMEOUT = 1500;
 
 	@Test
-	void sendString_appendsEnterAndWritesToStream() throws Exception {
-		ByteArrayOutputStream out = new ByteArrayOutputStream();
-		TestConnection connection = new TestConnection(configurer("ok>"), emptyInput(), out);
-
-		connection.sendString("echo hi", "\n");
-
-		assertEquals("echo hi\n", out.toString("utf-8"));
-	}
-
-	@Test
-	void sendString_outputStreamErrorIsWrappedInGeneralCommandException() throws Exception {
-		TestConnection connection = new TestConnection(configurer("ok>"), emptyInput(), brokenOutput());
-
-		assertThrows(GeneralCommandException.class, () -> connection.sendString("ls", "\n"));
-	}
-
-	@Test
 	void sendCommand_successFlagMatched_returnsFullEcho() throws Exception {
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		TestConnection connection = new TestConnection(configurer("root@host:~# "),
@@ -213,6 +196,14 @@ class ConnectionBaseTest {
 	}
 
 	@Test
+	void sendCommand_outputStreamErrorIsWrappedInGeneralCommandException() throws Exception {
+		TestConnection connection = new TestConnection(configurer("ok>"), emptyInput(), brokenOutput());
+
+		assertThrows(GeneralCommandException.class,
+				() -> connection.sendCommand(baseCommand("ls").build()));
+	}
+
+	@Test
 	void sendCommand_commandsWithoutFlagsAreSentWithoutJudgingResult() throws Exception {
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		TestConnection connection = new TestConnection(configurer("ok>"), emptyInput(), out);
@@ -297,7 +288,7 @@ class ConnectionBaseTest {
 
 		GeneralCommandException exception = assertThrows(GeneralCommandException.class, connection::postConnect);
 
-		assertTrue(exception.getMessage().startsWith("post connect command failed"));
+		assertTrue(exception.getMessage().startsWith("postConnect command failed"));
 		assertEquals(1, connection.getCloseCount());
 	}
 

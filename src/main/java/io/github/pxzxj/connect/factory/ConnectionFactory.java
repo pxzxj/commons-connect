@@ -9,7 +9,7 @@ public interface ConnectionFactory {
     /**
      * Checks whether this factory supports the given connection configuration
      * @param connectionConfigurer connection configuration
-     * @return
+     * @return support the connectionConfigurer or not
      */
     boolean supports(ConnectionConfigurer connectionConfigurer);
 

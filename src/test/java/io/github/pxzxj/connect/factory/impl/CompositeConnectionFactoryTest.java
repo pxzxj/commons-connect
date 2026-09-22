@@ -3,7 +3,8 @@ package io.github.pxzxj.connect.factory.impl;
 import io.github.pxzxj.connect.Connection;
 import io.github.pxzxj.connect.ConnectionConfigurer;
 import io.github.pxzxj.connect.ConnectionConfigurerBuilder;
-import io.github.pxzxj.connect.ConnectionFactory;
+import io.github.pxzxj.connect.factory.ConnectionFactory;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;

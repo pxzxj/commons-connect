@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -51,6 +52,10 @@ class ConnectionConfigurerBuilderTest {
 				.charset("GBK")
 				.username("root")
 				.password("secret")
+				.privateKey("/tmp/id_rsa")
+				.passphrase("key-passphrase")
+				.knownHosts("/tmp/known_hosts")
+				.strictHostKeyChecking(true)
 				.postConnect(postConnect)
 				.preDisconnect(preDisconnect)
 				.successFlags("$ ")
@@ -69,6 +74,10 @@ class ConnectionConfigurerBuilderTest {
 		assertEquals("GBK", configurer.getCharset());
 		assertEquals("root", configurer.getUsername());
 		assertEquals("secret", configurer.getPassword());
+		assertEquals("/tmp/id_rsa", configurer.getPrivateKey());
+		assertEquals("key-passphrase", configurer.getPassphrase());
+		assertEquals("/tmp/known_hosts", configurer.getKnownHosts());
+		assertTrue(configurer.isStrictHostKeyChecking());
 		assertSame(postConnect, configurer.getPostConnect());
 		assertSame(preDisconnect, configurer.getPreDisconnect());
 		assertEquals("$ ", configurer.getSuccessFlags()[0]);
@@ -89,6 +98,10 @@ class ConnectionConfigurerBuilderTest {
 		assertNull(configurer.getShellPath());
 		assertNull(configurer.getUsername());
 		assertNull(configurer.getPassword());
+		assertNull(configurer.getPrivateKey());
+		assertNull(configurer.getPassphrase());
+		assertNull(configurer.getKnownHosts());
+		assertFalse(configurer.isStrictHostKeyChecking());
 		assertNull(configurer.getPostConnect());
 		assertNull(configurer.getPreDisconnect());
 		assertNull(configurer.getSuccessFlags());

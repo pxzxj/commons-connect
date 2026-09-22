@@ -4,7 +4,7 @@ public interface Connection extends AutoCloseable {
 
     /**
      * Echo received after connecting, e.g. the ssh motd
-     * @return
+     * @return postConnectOutput
      */
     String getPostConnectOutput();
 
@@ -17,7 +17,7 @@ public interface Connection extends AutoCloseable {
 
     /**
      * Whether the connection is still alive
-     * @return
+     * @return connected or not
      */
     boolean isConnected();
 

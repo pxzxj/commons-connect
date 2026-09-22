@@ -6,8 +6,9 @@ import io.github.pxzxj.connect.CommandResult;
 import io.github.pxzxj.connect.Connection;
 import io.github.pxzxj.connect.ConnectionConfigurer;
 import io.github.pxzxj.connect.ConnectionConfigurerBuilder;
-import io.github.pxzxj.connect.ConnectionFactory;
 import io.github.pxzxj.connect.GeneralConnectionException;
+import io.github.pxzxj.connect.factory.ConnectionFactory;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

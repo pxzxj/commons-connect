@@ -9,8 +9,10 @@ import io.github.pxzxj.connect.CommandResult;
 import io.github.pxzxj.connect.Connection;
 import io.github.pxzxj.connect.ConnectionConfigurer;
 import io.github.pxzxj.connect.ConnectionConfigurerBuilder;
-import io.github.pxzxj.connect.ConnectionFactory;
 import io.github.pxzxj.connect.GeneralConnectionException;
+import io.github.pxzxj.connect.factory.ConnectionFactory;
+
+import org.apache.sshd.common.config.keys.PublicKeyEntry;
 import org.apache.sshd.server.Environment;
 import org.apache.sshd.server.ExitCallback;
 import org.apache.sshd.server.SshServer;
@@ -29,7 +31,9 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.Reader;
 import java.io.UnsupportedEncodingException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -99,6 +103,18 @@ class SshConnectionFactoryEmbeddedServerTest {
 		String path = tempDir.resolve(fileName).toString();
 		keyPair.writePrivateKey(path, passphrase);
 		return path;
+	}
+
+	/**
+	 * Writes every given host key as a known_hosts entry. The server uses a non standard port, so the entries
+	 * have to use the {@code [host]:port} form that JSch looks up.
+	 */
+	private Path writeKnownHosts(Iterable<? extends java.security.KeyPair> hostKeys) throws Exception {
+		List<String> lines = new ArrayList<>();
+		for (java.security.KeyPair hostKey : hostKeys) {
+			lines.add("[" + HOST + "]:" + port + " " + PublicKeyEntry.toString(hostKey.getPublic()));
+		}
+		return Files.write(tempDir.resolve("known_hosts"), lines);
 	}
 
 	@AfterEach
@@ -195,6 +211,48 @@ class SshConnectionFactoryEmbeddedServerTest {
 	}
 
 	@Test
+	void createConnection_strictHostKeyCheckingWithMatchingKnownHosts_connects() throws Exception {
+		Path knownHosts = writeKnownHosts(sshServer.getKeyPairProvider().loadKeys(null));
+
+		Connection connection = factory().createConnection(configurerBuilder()
+				.knownHosts(knownHosts.toString())
+				.strictHostKeyChecking(true)
+				.build());
+
+		try {
+			assertTrue(connection.isConnected());
+		}
+		finally {
+			connection.close();
+		}
+	}
+
+	@Test
+	void createConnection_strictHostKeyCheckingWithoutKnownHosts_fails() {
+		GeneralConnectionException exception = assertThrows(GeneralConnectionException.class,
+				() -> factory().createConnection(configurerBuilder().strictHostKeyChecking(true).build()));
+
+		assertTrue(exception.getMessage().contains("create ssh connection error"),
+				"actual message: " + exception.getMessage());
+		assertTrue(exception.getCause().getMessage().contains("reject HostKey"),
+				"actual cause: " + exception.getCause().getMessage());
+	}
+
+	@Test
+	void createConnection_strictHostKeyCheckingWithChangedHostKey_fails() throws Exception {
+		Path knownHosts = writeKnownHosts(new SimpleGeneratorHostKeyProvider().loadKeys(null));
+
+		GeneralConnectionException exception = assertThrows(GeneralConnectionException.class,
+				() -> factory().createConnection(configurerBuilder()
+						.knownHosts(knownHosts.toString())
+						.strictHostKeyChecking(true)
+						.build()));
+
+		assertTrue(exception.getCause().getMessage().contains("HostKey has been changed"),
+				"actual cause: " + exception.getCause().getMessage());
+	}
+
+	@Test
 	void createConnection_wrongPassword_failsWithGeneralConnectionException() {
 		GeneralConnectionException exception = assertThrows(GeneralConnectionException.class,
 				() -> factory().createConnection(configurerBuilder().password("wrong-password").build()));
@@ -240,19 +298,41 @@ class SshConnectionFactoryEmbeddedServerTest {
 
 	@Test
 	void createConnection_encryptedPrivateKeyWithWrongPassphrase_fails() {
-		assertThrows(GeneralConnectionException.class,
+		GeneralConnectionException exception = assertThrows(GeneralConnectionException.class,
 				() -> factory().createConnection(publicKeyConfigurerBuilder()
 						.privateKey(encryptedPrivateKeyPath)
 						.passphrase("wrong-passphrase")
 						.build()));
+
+		// jsch swallows the wrong passphrase in addIdentity, the failure only shows up as an authentication failure
+		assertTrue(exception.getCause().getMessage().contains("USERAUTH fail"),
+				"actual cause: " + exception.getCause().getMessage());
 	}
 
 	@Test
 	void createConnection_encryptedPrivateKeyWithoutPassphrase_fails() {
-		assertThrows(GeneralConnectionException.class,
+		GeneralConnectionException exception = assertThrows(GeneralConnectionException.class,
 				() -> factory().createConnection(publicKeyConfigurerBuilder()
 						.privateKey(encryptedPrivateKeyPath)
 						.build()));
+
+		assertTrue(exception.getCause().getMessage().contains("USERAUTH fail"),
+				"actual cause: " + exception.getCause().getMessage());
+	}
+
+	@Test
+	void createConnection_unencryptedPrivateKeyWithPassphrase_authenticates() throws Exception {
+		Connection connection = factory().createConnection(publicKeyConfigurerBuilder()
+				.privateKey(privateKeyPath)
+				.passphrase("passphrase-of-an-unencrypted-key")
+				.build());
+
+		try {
+			assertTrue(connection.isConnected());
+		}
+		finally {
+			connection.close();
+		}
 	}
 
 	private ConnectionConfigurer configurer() {

@@ -154,7 +154,7 @@ class ShellConnectionTest {
 
 			connection.postConnect();
 
-			assertTrue(keepAliveThreadStarted("KeepAliveDaemon " + ptyProcess.pid()));
+			assertTrue(keepAliveThreadStarted("KeepAliveDaemon-" + ptyProcess.pid()));
 		}
 		finally {
 			connection.close();

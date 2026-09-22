@@ -29,9 +29,9 @@
     </developers>
 
     <scm>
-        <connection>scm:git:git://github.com/pxzxj/commons-connect.git</connection>
-        <developerConnection>scm:git:ssh://github.com:pxzxj/commons-connect.git</developerConnection>
-        <url>http://github.com/pxzxj/commons-connect/tree/master</url>
+        <connection>scm:git:https://github.com/pxzxj/commons-connect.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/pxzxj/commons-connect.git</developerConnection>
+        <url>https://github.com/pxzxj/commons-connect/tree/master</url>
     </scm>
 
     <properties>
@@ -160,7 +160,7 @@
             <plugin>
                 <groupId>org.sonatype.central</groupId>
                 <artifactId>central-publishing-maven-plugin</artifactId>
-                <version>0.5.0</version>
+                <version>0.9.0</version>
                 <extensions>true</extensions>
                 <configuration>
                     <publishingServerId>central</publishingServerId>

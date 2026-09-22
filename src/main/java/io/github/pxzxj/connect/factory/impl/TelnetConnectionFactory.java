@@ -1,15 +1,16 @@
 package io.github.pxzxj.connect.factory.impl;
 
-import io.github.pxzxj.connect.*;
-import io.github.pxzxj.connect.ConnectionFactory;
-
-import io.github.pxzxj.connect.impl.TelnetConnection;
-
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.net.telnet.TelnetClient;
-
 import java.io.IOException;
 import java.util.Objects;
+
+import io.github.pxzxj.connect.factory.ConnectionFactory;
+
+import org.apache.commons.net.telnet.TelnetClient;
+
+import io.github.pxzxj.connect.Connection;
+import io.github.pxzxj.connect.ConnectionConfigurer;
+import io.github.pxzxj.connect.GeneralConnectionException;
+import io.github.pxzxj.connect.impl.TelnetConnection;
 
 public class TelnetConnectionFactory implements ConnectionFactory {
 

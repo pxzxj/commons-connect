@@ -49,7 +49,7 @@ public abstract class ConnectionBase implements Connection {
 		this.lastSendTime = System.currentTimeMillis();
 	}
 
-	public synchronized void sendString(String command, String enter) {
+	private void sendString(String command, String enter) {
 		try {
 			command += enter;
 			logger.debug("host: {}, send command: {}", host, command);
@@ -71,8 +71,8 @@ public abstract class ConnectionBase implements Connection {
 		}
 		boolean success = true;
 		CommandConfigurer failCommand = null;
-		String echo = "";
-		String lastEcho = "";
+		String output = "";
+		String lastOutput = "";
 		while (cc != null) {
 			if (cc.getCommand() == null && cc.getCommandFunction() == null) {
 				return CommandResult.failResult("command and commandFunction cannot both be null");
@@ -83,12 +83,12 @@ public abstract class ConnectionBase implements Connection {
 			String enter = cc.getEnter();
 			String moreFlag = cc.getMoreFlag();
 			String moreCommand = cc.getMoreCommand();
-			String command = cc.getCommand() != null ? cc.getCommand() : cc.getCommandFunction().apply(lastEcho);
+			String command = cc.getCommand() != null ? cc.getCommand() : cc.getCommandFunction().apply(lastOutput);
 			sendString(command, enter);
 			if (successFlags != null || failFlags != null) {
 				CommandResult waitResult = waitForString(successFlags, failFlags, timeoutMilliSeconds, moreFlag, moreCommand);
-				lastEcho = waitResult.getResult();
-				echo += waitResult.getResult();
+				lastOutput = waitResult.getResult();
+				output += waitResult.getResult();
 				if (!waitResult.isSuccess()) {
 					success = false;
 					failCommand = cc;
@@ -97,15 +97,15 @@ public abstract class ConnectionBase implements Connection {
 			}
 			else {
 				CommandResult waitResult = waitForString(new String[]{CommandConfigurer.DEFAULT_WAIT_STR}, null, timeoutMilliSeconds, moreFlag, moreCommand);
-				lastEcho = waitResult.getResult();
-				echo += waitResult.getResult();
+				lastOutput = waitResult.getResult();
+				output += waitResult.getResult();
 			}
 			cc = cc.getNext();
 		}
-		return success ? CommandResult.successfulResult(echo) : CommandResult.failResult(failCommand, echo);
+		return success ? CommandResult.successfulResult(output) : CommandResult.failResult(failCommand, output);
 	}
 
-	public synchronized CommandResult waitForString(String[] successFlags,
+	private CommandResult waitForString(String[] successFlags,
 			String[] failFlags,
 			int maxMilliSeconds,
 			String moreFlag,
@@ -117,7 +117,7 @@ public abstract class ConnectionBase implements Connection {
 			failFlags = new String[0];
 		}
 		long startTime = lastSendTime = System.currentTimeMillis();
-		logger.info("host: {}, begin waiting for string: {} and {}", host, Arrays.toString(successFlags), Arrays.toString(failFlags));
+		logger.debug("host: {}, begin waiting for string: {} and {}", host, Arrays.toString(successFlags), Arrays.toString(failFlags));
 		boolean success = false;
 		byte[] totalData = new byte[0];
 		String output;
@@ -223,7 +223,6 @@ public abstract class ConnectionBase implements Connection {
 		String[] successFlags = connectionConfigurer.getSuccessFlags();
 		String[] failFlags = connectionConfigurer.getFailFlags();
 		int timeoutMilliSeconds = connectionConfigurer.getTimeoutMilliSeconds();
-
 		if (successFlags != null || failFlags != null) {
 			CommandResult waitResult = waitForString(successFlags, failFlags, timeoutMilliSeconds, null, null);
 			postConnectOutput = waitResult.getResult();
@@ -231,7 +230,7 @@ public abstract class ConnectionBase implements Connection {
 				if (isConnected()) {
 					close();
 				}
-				throw new GeneralConnectionException("connection failed, echo: " + waitResult.getResult());
+				throw new GeneralConnectionException("connection failed, output: " + waitResult.getResult());
 			}
 		}
 		else {
@@ -249,14 +248,14 @@ public abstract class ConnectionBase implements Connection {
 				if (isConnected()) {
 					close();
 				}
-				String message = "post connect command failed: " + commandResult.getFailCommand() + "\n echo: " + commandResult.getResult();
+				String message = "postConnect command failed: " + commandResult.getFailCommand() + "\n output: " + commandResult.getResult();
 				throw new GeneralCommandException(message, commandResult);
 			}
 		}
 		logger.info("host: {}, login output: {}", host, postConnectOutput);
 		if (StringUtils.isNotEmpty(connectionConfigurer.getKeepAliveCommand())) {
 			Thread thread = new Thread(new KeepAliveDaemon());
-			thread.setName("KeepAliveDaemon " + host);
+			thread.setName("KeepAliveDaemon-" + host);
 			thread.setDaemon(true);
 			thread.start();
 		}
@@ -271,14 +270,9 @@ public abstract class ConnectionBase implements Connection {
 
 	private class KeepAliveDaemon implements Runnable {
 
-		/**
-		 * Time the last keep alive command was sent
-		 */
-		private long lastSendKeepAliveCommandTime = System.currentTimeMillis();
-
 		@Override
 		public void run() {
-			logger.info("{} start", Thread.currentThread().getName());
+			logger.info("{} Start", Thread.currentThread().getName());
 			try {
 				CommandConfigurer keepAliveCommand = CommandConfigurerBuilder.newCommandConfigurer(connectionConfigurer.getKeepAliveCommand())
 						.enter("")
@@ -286,17 +280,11 @@ public abstract class ConnectionBase implements Connection {
 						.timeoutMilliSeconds(connectionConfigurer.getKeepAliveWaitTimeout())
 						.build();
 				while (keepAlive) {
-					if (System.currentTimeMillis() - lastSendTime > connectionConfigurer.getKeepAliveInterval() &&
-							System.currentTimeMillis() - lastSendKeepAliveCommandTime > connectionConfigurer.getKeepAliveInterval()) {
+					if (System.currentTimeMillis() - lastSendTime > connectionConfigurer.getKeepAliveInterval()) {
 						synchronized (ConnectionBase.this) {
-							if (System.currentTimeMillis() - lastSendTime > connectionConfigurer.getKeepAliveInterval() &&
-									System.currentTimeMillis() - lastSendKeepAliveCommandTime > connectionConfigurer.getKeepAliveInterval()) {
-								// a keep alive command must not change lastSendTime, so save it before and restore it after
-								long tempLastSendTime = lastSendTime;
-								lastSendKeepAliveCommandTime = System.currentTimeMillis();
+							if (System.currentTimeMillis() - lastSendTime > connectionConfigurer.getKeepAliveInterval()) {
 								CommandResult commandResult = sendCommand(keepAliveCommand);
 								logger.debug("host: {}, keepAliveResult: {}", host, commandResult);
-								lastSendTime = tempLastSendTime;
 							}
 						}
 					}
@@ -305,9 +293,6 @@ public abstract class ConnectionBase implements Connection {
 			}
 			catch (Exception e) {
 				logger.error(Thread.currentThread().getName(), e);
-				if (!isConnected()) {
-					logger.error("{} Exit, Connection Closed", Thread.currentThread().getName());
-				}
 			}
 			logger.info("{} Terminated", Thread.currentThread().getName());
 		}

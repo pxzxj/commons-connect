@@ -7,12 +7,15 @@ import java.util.Map;
 
 import com.pty4j.PtyProcess;
 import com.pty4j.PtyProcessBuilder;
+
+import io.github.pxzxj.connect.factory.ConnectionFactory;
+
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.github.pxzxj.connect.Connection;
 import io.github.pxzxj.connect.ConnectionConfigurer;
-import io.github.pxzxj.connect.ConnectionFactory;
 import io.github.pxzxj.connect.GeneralConnectionException;
 import io.github.pxzxj.connect.impl.ShellConnection;
 import io.github.pxzxj.connect.support.SystemInfoRt;
@@ -30,7 +33,7 @@ public class ShellConnectionFactory implements ConnectionFactory {
     public Connection createConnection(ConnectionConfigurer connectionConfigurer) throws GeneralConnectionException {
         String shellPath = connectionConfigurer.getShellPath();
         String[] command;
-        if(shellPath == null) {
+        if(StringUtils.isEmpty(shellPath)) {
             command = SystemInfoRt.isWindows ? new String[]{"cmd.exe"} : new String[]{"/bin/bash", "--login"};
             logger.info("no specified shellPath, use {}", Arrays.toString(command));
         } else {

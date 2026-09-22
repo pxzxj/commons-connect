@@ -26,7 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * inputStream.available() does not work for a pty, so the echo is read with a separate implementation, see https://github.com/JetBrains/pty4j/pull/37
+ * inputStream.available() does not work for a pty, so the output is read with a separate implementation, see the <a href="https://github.com/JetBrains/pty4j/pull/37">PR</a>
  */
 public class ShellConnection implements Connection {
 
@@ -74,7 +74,7 @@ public class ShellConnection implements Connection {
 				.build();
 		currentCommandResult = ArrayUtils.isNotEmpty(connectionConfigurer.getSuccessFlags()) ? CommandResult.failResult("") : CommandResult.successfulResult("");
         outputReaderThread = new Thread(new ShellOutputReader());
-        outputReaderThread.setName("ShellOutputReader " + pid);
+        outputReaderThread.setName("ShellOutputReader-" + pid);
         outputReaderThread.setDaemon(true);
         outputReaderThread.start();
         waitForString();
@@ -82,7 +82,7 @@ public class ShellConnection implements Connection {
             if(isConnected()){
                 close();
             }
-            throw new GeneralConnectionException("connection failed, echo: " + outputBuffer);
+            throw new GeneralConnectionException("connection failed, output: " + outputBuffer);
         }
         postConnectOutput = outputBuffer.toString();
         CommandConfigurer postConnectCommand = connectionConfigurer.getPostConnect();
@@ -95,7 +95,7 @@ public class ShellConnection implements Connection {
                 if(isConnected()){
                     close();
                 }
-                String message = "post connect command failed: " + commandResult.getFailCommand() + "\n echo: " + commandResult.getResult();
+                String message = "postConnect command failed: " + commandResult.getFailCommand() + "\n output: " + commandResult.getResult();
                 throw new GeneralCommandException(message, commandResult);
             }
             postConnectOutput += commandResult.getResult();
@@ -103,7 +103,7 @@ public class ShellConnection implements Connection {
 		logger.info("proc: {}, postConnectOutput: {}", pid, postConnectOutput);
         if(StringUtils.isNotEmpty(connectionConfigurer.getKeepAliveCommand())){
             keepAliveThread = new Thread(new KeepAliveDaemon());
-            keepAliveThread.setName("KeepAliveDaemon " + pid);
+            keepAliveThread.setName("KeepAliveDaemon-" + pid);
             keepAliveThread.setDaemon(true);
             keepAliveThread.start();
         }
@@ -161,7 +161,7 @@ public class ShellConnection implements Connection {
         return success ? CommandResult.successfulResult(outputBuffer.toString()) : CommandResult.failResult(failCommand, outputBuffer.toString());
     }
 
-    public void waitForString() {
+    private void waitForString() {
         long startTime = lastSendTime = System.currentTimeMillis();
         int timeoutMilliSeconds = currentCommandConfigurer.getTimeoutMilliSeconds();
         String moreCommand = currentCommandConfigurer.getMoreCommand();
@@ -215,7 +215,7 @@ public class ShellConnection implements Connection {
 
         @Override
         public void run() {
-			logger.info("{} start", Thread.currentThread().getName());
+			logger.info("{} Start", Thread.currentThread().getName());
             char[] buffer = new char[1024];
             try {
                 while (!Thread.interrupted()) {
@@ -255,29 +255,21 @@ public class ShellConnection implements Connection {
 
     private class KeepAliveDaemon implements Runnable {
 
-        private long lastSendKeepAliveCommandTime = System.currentTimeMillis();
-
         @Override
         public void run() {
-			logger.info("{} start", Thread.currentThread().getName());
+			logger.info("{} Start", Thread.currentThread().getName());
             CommandConfigurer keepAliveCommand = CommandConfigurerBuilder.newCommandConfigurer(connectionConfigurer.getKeepAliveCommand())
                     .enter("")
                     .successFlags(connectionConfigurer.getKeepAliveWaitStr())
                     .timeoutMilliSeconds(connectionConfigurer.getKeepAliveWaitTimeout())
                     .build();
             try {
-
                 while (!Thread.interrupted()) {
-                    if (System.currentTimeMillis() - lastSendTime > connectionConfigurer.getKeepAliveInterval() &&
-                            System.currentTimeMillis() - lastSendKeepAliveCommandTime > connectionConfigurer.getKeepAliveInterval()) {
+                    if (System.currentTimeMillis() - lastSendTime > connectionConfigurer.getKeepAliveInterval()) {
                         synchronized (ShellConnection.this){
-                            if (System.currentTimeMillis() - lastSendTime > connectionConfigurer.getKeepAliveInterval() &&
-                                    System.currentTimeMillis() - lastSendKeepAliveCommandTime > connectionConfigurer.getKeepAliveInterval()) {
-                                long tempLastSendTime = lastSendTime;
-                                lastSendKeepAliveCommandTime = System.currentTimeMillis();
+                            if (System.currentTimeMillis() - lastSendTime > connectionConfigurer.getKeepAliveInterval()) {
                                 CommandResult commandResult = sendCommand(keepAliveCommand);
-								logger.info("proc: {}, keepAliveResult: {}", pid, commandResult);
-                                lastSendTime = tempLastSendTime;
+								logger.debug("proc: {}, keepAliveResult: {}", pid, commandResult);
                             }
                         }
                     }
@@ -285,9 +277,6 @@ public class ShellConnection implements Connection {
                 }
             } catch (Exception e) {
                 logger.error(Thread.currentThread().getName(), e);
-                if (!isConnected()) {
-					logger.error("{} Exit, Connection Closed", Thread.currentThread().getName());
-                }
             }
 			logger.info("{} Terminated", Thread.currentThread().getName());
         }

@@ -1,4 +1,8 @@
-package io.github.pxzxj.connect;
+package io.github.pxzxj.connect.factory;
+
+import io.github.pxzxj.connect.Connection;
+import io.github.pxzxj.connect.ConnectionConfigurer;
+import io.github.pxzxj.connect.GeneralConnectionException;
 
 public interface ConnectionFactory {
 

@@ -1,4 +1,3 @@
-:toc:
 = commons-connect
 
 link:README_en.adoc[English] | 中文

@@ -2,7 +2,6 @@
 
 link:README.adoc[中文] | English
 
-
 == Introduction
 
 === Features
@@ -10,30 +9,27 @@ link:README.adoc[中文] | English
 commons-connect provides simple APIs for connecting to devices and sending commands. Main features:
 
 * Supports SSH, TELNET and SHELL connections, and can be extended
-* All connection parameters (including the whole login procedure) are kept in `ConnectionConfigurer`, which can be serialized to JSON and stored in a database, then dispatched on demand
-* Supports command chains: success/fail flags, timeout and paging flag can be configured per command, and the next command is sent only after the current one succeeded
-* Built-in echo parsing with a configurable charset, plus paging and keep alive support
-* Every connection log line carries `id: {connectionId}`, so that multiple connections inside one process can be told apart
+* Supports configuring the success/fail flags and the timeout of command execution
+* Supports paging commands such as --More--
+* Supports command chains, and stops at the first command whose fail flag matches
+* Supports keep alive
 
 === Requirements
 
 * JDK 1.8+
 
 === Installation
-Add the commons-connect-core dependency to your pom file and install it into your local maven repository
 
 [source,xml,subs="verbatim"]
 ----
-    <dependencies>
         <dependency>
             <groupId>io.github.pxzxj</groupId>
-            <artifactId>commons-connect-core</artifactId>
+            <artifactId>commons-connect</artifactId>
             <version>0.1.0</version>
         </dependency>
-    </dependencies>
 ----
 
-=== Usage
+=== Quick start
 
 A simple example
 [source,java,subs="verbatim"]
@@ -41,17 +37,14 @@ A simple example
 public class StartConnect {
 
     public static void main(String[] args){
-        ConnectionFactory connectionFactory = new CompositeConnectionFactory(new SshConnectionFactory(), new TelnetConnectionFactory());
         ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.ssh()
                                                     .host("192.168.3.1")
                                                     .port(22)
                                                     .username("root")
-                                                    .password("")
-                                                    .charset("utf-8")
+                                                    .password("pwd")
                                                     .successFlags("#")
-                                                    .postConnect(CommandConfigurerBuilder.newCommandConfigurer("echo 'Hello Linux!'").enter("\n").successFlags("#").build())
                                                     .build();                 // <1>
-        Connection connection = connectionFactory.createConnection(connectionConfigurer);      // <2>
+        Connection connection = new SshConnectionFactory().createConnection(connectionConfigurer);      // <2>
         CommandConfigurer commandConfigurer = CommandConfigurerBuilder.newCommandConfigurer("df -h")
                                                                 .successFlags("#")
                                                                 .next("pwd")
@@ -63,379 +56,275 @@ public class StartConnect {
             System.out.println("failed command = " + commandResult.getFailCommand());
         }
         System.out.println("echo = " + commandResult.getResult());
-        System.out.println("login output = " + connection.getPostConnectOutput());       // <5>
-        connection.close();                                                              // <6>
+        connection.close();                                                              // <5>
     }
 }
 ----
-<1> Build the connection configuration: protocol, device information, charset, success flags and the command to run after login
+<1> Build the connection configuration: protocol, device information, charset, success flags, and the commands to run after login
 <2> Create the connection
-<3> Build the command configuration: command text, success/fail flags and the next command
+<3> Build the command configuration: command text, success/fail flags, and the next command
 <4> Send the command; the result tells whether it succeeded, which command failed and what the echo was
-<5> Echo received after login, e.g. the SSH motd or the SHELL prompt
-<6> Close the connection; the command configured in `preDisconnect` is sent first
-
-== Architecture
-
-image::images/architecture.png[]
+<5> Close the connection; the command configured in `preDisconnect` is sent first
 
 == API reference
 
-[[connection]]
 === Connection
 
-The `Connection` interface represents a connection. There are three implementations today, `SshConnection`, `TelnetConnection` and `ShellConnection`, and its main methods are
+image::images/Connection.svg[]
 
-[horizontal]
-`getConnectionId()` :: Connection identifier, the value printed as `id: {}` in the logs; when `id` is not configured explicitly, SSH/TELNET use the host and SHELL uses the process pid
-`getCreateTime()` :: Creation time of the connection
-`getPostConnectOutput()` :: Echo received after login, e.g. the SSH motd
-`getConnectionConfigurer()` :: The configuration this connection was created with
-`sendCommand(CommandConfigurer)` :: Send a command, returns a <<commandResult, CommandResult>>
-`isConnected()` :: Whether the connection is still alive
-`close()` :: Close the connection; the command configured in `preDisconnect` is sent first
+link:src/main/java/io/github/pxzxj/connect/Connection.java[`Connection`] is the interface that represents a connection to a device,
+once it is created `sendCommand(CommandConfigurer)` sends commands to the device and returns the echo, and `close()` must be called when the connection is no longer needed
 
+`isConnected()` checks the connection state, and `getPostConnectOutput()` returns the echo produced when the connection was created, for example the SSH motd
 
-NOTE: `Connection` extends `AutoCloseable`, so it can be used in a try-with-resource block and gets closed automatically
+There is one implementation of `Connection` per connection type; ssh, telnet and shell are supported today, see <<connection-type>> for details
 
 === ConnectionFactory
 
-Creating a connection can be complicated, therefore the factory pattern is used. `ConnectionFactory` is an interface whose `createConnection()` method creates connections +
-There can be several implementations of `ConnectionFactory`, but only the ones whose `supports()` method returns true are used to create a connection, as the pseudo code below shows
+image::images/ConnectionFactory.svg[]
 
-[source,java,subs="verbatim"]
-----
-List<ConnectionFactory> factories = ...
-Connection connection = null;
-for(ConnectionFactory factory : factories) {
-    if(factory.supports(connectionConfigurer)) {
-        connection = factory.createConnection(connectionConfigurer);
-        break;
-    }
-}
-----
-
-NOTE: The design of `ConnectionFactory` is inspired by `org.springframework.web.method.support.HandlerMethodArgumentResolver`
+link:src/main/java/io/github/pxzxj/connect/factory/ConnectionFactory.java[`ConnectionFactory`] creates a `Connection` with `createConnection(ConnectionConfigurer)`,
+and `supports(ConnectionConfigurer)` makes it a strategy, which is inspired by `HandlerMethodArgumentResolver` of Spring MVC
 
 === ConnectionConfigurer
-`ConnectionConfigurer` is essentially a plain Java Bean holding the connection information such as IP, port, user name and password. All of its properties are listed below
 
+image::images/ConnectionConfigurer.svg[]
 
-|===
-|Name |Type |Description |Required |Default
+link:src/main/java/io/github/pxzxj/connect/ConnectionConfigurer.java[`ConnectionConfigurer`] holds the information needed to create a connection, for example the common host, port, username and password fields,
+the properties differ per connection type, see <<usage>>,
+instances are usually created with link:src/main/java/io/github/pxzxj/connect/ConnectionConfigurerBuilder.java[`ConnectionConfigurerBuilder`]
 
-|type
-|String
-|Connection type, currently ssh, telnet and shell
-|Yes
-|
-
-|id
-|String
-|Connection identifier, used as the connectionId in logs
-|No
-|host for SSH/TELNET, process pid for SHELL
-
-|shellPath
-|String
-|Terminal program started for the SHELL type
-|No
-|cmd.exe on Windows, /bin/bash otherwise
-
-|host
-|String
-|Target address
-|Yes
-|
-
-|port
-|int
-|Target port
-|No
-|23 (`ConnectionConfigurerBuilder.ssh()` sets it to 22)
-
-|charset
-|String
-|Charset used by the connection
-|No
-|utf-8
-
-|username
-|String
-|Login user name
-|Required for SSH
-|
-
-|password
-|String
-|Login password
-|Required for SSH
-|
-
-|postConnect
-|<<commandConfigurer, CommandConfigurer>>
-|Command sent after a successful login
-|No
-|
-
-|preDisconnect
-|<<commandConfigurer, CommandConfigurer>>
-|Command sent before disconnecting
-|No
-|
-
-|successFlags
-|String[]
-|Success flags of the connection
-|No
-|
-
-|failFlags
-|String[]
-|Fail flags of the connection
-|No
-|
-
-|timeoutMilliSeconds
-|int
-|Time to wait for the success or fail flags, in milliseconds
-|No
-|5000
-
-|keepAliveInterval
-|int
-|Keep alive interval; a keep alive command is sent after being idle for this long
-|No
-|60000
-
-|keepAliveCommand
-|String
-|Keep alive command
-|No
-|a space
-
-|keepAliveWaitStr
-|String
-|String awaited for the keep alive command
-|No
-|(!@#$%)
-
-|keepAliveWaitTimeout
-|int
-|Time to wait for the keep alive command
-|No
-|2000
-
-|extAttrs
-|Map<String, Object>
-|Extra attributes
-|No
-|
-|===
-
-NOTE: `ConnectionConfigurerBuilder` is the builder of `ConnectionConfigurer`, it creates instances in a more elegant way
-
-[[commandConfigurer]]
 === CommandConfigurer
 
-Calling `sendCommand(CommandConfigurer commandConfigurer)` on a <<connection, Connection>> sends a command. `CommandConfigurer` is a simple Java Bean holding the information of the command to send, its properties are
+image::images/CommandConfigurer.svg[]
 
-|===
-|Name |Type |Description |Required |Default
+link:src/main/java/io/github/pxzxj/connect/CommandConfigurer.java[`CommandConfigurer`] describes a command to execute, `command` is the command text,
+`successFlags` and `failFlags` are the success and fail flags of the command: as soon as `successFlags` or `failFlags` appears in the echo the wait ends and the command is marked as succeeded or failed,
+and when both of them appear the command counts as failed,
 
-|command
-|String
-|Command text
-|One of command and commandFunction must be set
-|
+when neither of them ever appears in the echo the wait ends when the time configured through `timeoutMilliSeconds` is reached, and `timeoutMilliSeconds` defaults to 5s,
+when neither `successFlags` nor `failFlags` is configured the call simply waits for `timeoutMilliSeconds` before returning
 
-|commandFunction
-|Function<String, String>
-|Function that builds the command from the echo of the previous commands (the Java functional interface `Function<String, String>`)
-|One of command and commandFunction must be set
-|
+`enter` is the enter key appended to the command, it defaults to `\n` and can be adjusted to what the device supports
 
-|timeoutMilliSeconds
-|int
-|Timeout
-|No
-|5000
+The echo of some commands is printed page by page, the `more` command on Linux for example; `moreFlag` and `moreCommand` can be configured to page through it automatically, so that the whole echo is fetched at once
 
-|successFlags
-|String[]
-|Success flags
-|No
-|
+`commandFunction` and `next` are meant for command chains, `next` is the command to execute afterwards, while `commandFunction` covers the dynamic case and builds a command from the echo of the previous command; note that a command is executed only when the previous one succeeded
 
-|failFlags
-|String[]
-|Fail flags, they take precedence over successFlags
-|No
-|
+instances are usually created with link:src/main/java/io/github/pxzxj/connect/CommandConfigurerBuilder.java[`CommandConfigurerBuilder`]
 
-|moreFlag
-|String
-|Paging flag
-|No
-|
-
-|moreCommand
-|String
-|Command that fetches the next page
-|No
-|a space
-
-|enter
-|String
-|Enter key (a command has to be terminated with enter)
-|No
-|\n
-
-|next
-|CommandConfigurer
-|Next command (it runs only when the current command succeeded)
-|No
-|
-|===
-
-NOTE: `CommandConfigurerBuilder` is the builder of `CommandConfigurer`, it creates instances in a more elegant way
-
-[[commandResult]]
 === CommandResult
-`CommandResult` is the return type of `sendCommand(CommandConfigurer commandConfigurer)` of `Connection`. It is a simple Java Bean as well, holding the result of the command, with the following properties
 
-|===
-|Name |Type |Description
+image::images/CommandResult.svg[]
 
-|success
-|boolean
-|Whether the command succeeded
+link:src/main/java/io/github/pxzxj/connect/CommandResult.java[`CommandResult`] is the return value of `sendCommand(CommandConfigurer)`, `isSuccess()` tells whether the command succeeded, `getResult()` returns the echo, and `getFailCommand()` returns the configuration of the command that failed
 
-|command
-|CommandConfigurer
-|The command that was sent
-
-|failCommand
-|CommandConfigurer
-|The command that failed
-
-|result
-|String
-|The echo
-
-|===
-
-
-
-
+[[connection-type]]
 == Connection types
 
-The supported connection types are SSH, TELNET and SHELL; the corresponding `ConnectionConfigurer.type` values are ssh, telnet and shell +
+`commons-connect` supports the ssh, telnet and shell types by default, and other types can be implemented against the API above,
+a shell connection uses `cmd.exe` on Windows and `/bin/bash` on other systems by default,
+and another shell can be selected through the `shellPath` property of `ConnectionConfigurer`, for example `powershell.exe` on Windows
 
-[horizontal]
-SSH :: Uses `SshConnectionFactory`, requires the `host`, `username` and `password` properties, based on JSch
-TELNET :: Uses `TelnetConnectionFactory`, only requires `host` and `port`, based on commons-net
-SHELL :: Uses `ShellConnectionFactory`, starts a local terminal process, based on pty4j
+As the image below shows, these three connection types still rely on other libraries under the hood, `commons-connect` only wraps them into a simpler and easier API
 
-When connecting to a device over TELNET, keep in mind that the user name, the password and all the login checks have to be configured in the `ConnectionConfigurer.postConnect` property, the `username` and `password` properties cannot be used
+image::images/architecture.png[]
 
-shell is the most powerful connection type: it emulates the command line terminal of an operating system, therefore everything supported on the command line can be done with `ShellConnection`. The command that opens a terminal differs between operating systems;
-by default Windows uses `cmd.exe` and other systems use `/bin/bash`, and the `shellPath` property can be used to configure it +
+[[usage]]
+== Usage and examples
 
-NOTE: The echo encoding of a SHELL connection depends on the local terminal. On a Chinese Windows for example `cmd.exe` outputs GBK, so set `charset` to GBK explicitly, otherwise Chinese characters in the echo come out garbled
+=== SSH password login
 
-
-== Best practices
-
-=== Login procedure as configuration
-commons-connect keeps the whole login procedure in the `ConnectionConfigurer` object. JSON serialization can convert between a `ConnectionConfigurer` object and a JSON string, so the login procedure of a device can be expressed as a JSON string in a very readable way; after storing the JSON configuration in a database, adjusting the login procedure only means changing that data
-
-The simplest login procedure is shown below — the device information, the user information and the success flag can be seen at a glance
-[source,json,subs="verbatim"]
-----
-{
-  "type" : "ssh",
-  "host" : "1.1.1.1",
-  "port" : 22,
-  "username" : "root",
-  "password" : "password",
-  "successFlags" : ["#"]
-}
-----
-
-Hard-coding device information into the JSON configuration means that every device needs its own JSON configuration. Devices that share the same login procedure and differ only in device information can share the same JSON configuration, using placeholders for the data that has to change per device; everything in the ${''} form below
-is placeholder data and is replaced with the actual device information when the connection is created
-[source,json,subs="verbatim"]
-----
-{
- "type" : "telnet",
- "host" : "${'host'}",
- "port" : 31114,
- "postConnect" : {
-  "command" : "LGI:OP=\"${'device_username'}\",PWD=\"${'device_password'}\";",
-  "successFlags" : ["RETCODE = 0"],
-  "next" : {
-  	"command" : "REG NE:Name=\"${'name'}\";",
-  	"successFlags" : ["RETCODE = 0"]
-  }
- },
- "preDisconnect" : {
- 	"command" : "UNREG NE:Name=\"${'name'}\";",
- 	"successFlags" : ["RETCODE = 0"],
- 	"next" : {
- 		"command" : "LGO:OP=\"${'device_username'}\";",
- 		"successFlags" : ["RETCODE = 0"]
- 	}
- }
-}
-----
-
-[[compositeConnectionFactory]]
-=== CompositeConnectionFactory
-
-Declare `ConnectionFactory` as a `Bean` and it can be injected into different services directly. `CompositeConnectionFactory` is the composite implementation of `ConnectionFactory`; with it you no longer have to iterate over all the `ConnectionFactory` beans
+Log in with the `username` and `password` properties, `port` can be omitted when it is 22, and `successFlags` is the flag that appears in the echo after a successful login
 
 [source,java,subs="verbatim"]
 ----
-@Configuration
-public class ConnectConfiguration {
+ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.ssh()
+        .host("192.168.3.1")
+        .port(22)
+        .username("root")
+        .password("password")
+        .successFlags("#")                                                          // flag of a successful login
+        .build();
 
-    @Bean
-    public TelnetConnectionFactory telnetConnectionFactory(){
-        return new TelnetConnectionFactory();
-    }
+Connection connection = new SshConnectionFactory().createConnection(connectionConfigurer);
+----
 
-    @Bean
-    public SshConnectionFactory sshConnectionFactory(){
-        return new SshConnectionFactory();
-    }
+=== SSH public key login
 
-    @Bean
-    @Primary
-    public CompositeConnectionFactory compositeConnectionFactory(List<ConnectionFactory> delegates){
-        return new CompositeConnectionFactory(delegates);
-    }
+Log in with a private key by setting the `privateKey` property, and when the key itself has a password set it through the `passphrase` property
 
-}
+[source,java,subs="verbatim"]
+----
+ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.ssh()
+        .host("192.168.3.1")
+        .username("root")
+        .privateKey("/home/pxzxj/.ssh/id_rsa")
+        .passphrase("passphrase")                       // can be omitted when the key has no password
+        .successFlags("#")
+        .build();
 
-@Service
-public class ConnectService {
+Connection connection = new SshConnectionFactory().createConnection(connectionConfigurer);
+----
 
-    @Autowired
-    private ConnectionFactory connectionFactory;
+=== TELNET
 
-    public Connection connect(ConnectionConfigurer connectionConfigurer){
-        if(connectionFactory.supports(connectionConfigurer)) {
-            return connectionFactory.createConnection(connectionConfigurer);
-        }
-        return null;
-    }
+Some network devices implement their own authentication procedure over the TELNET protocol, configure that procedure in `postConnect`, and `port` can be omitted when the default port 23 is used
+
+[source,java,subs="verbatim"]
+----
+ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.telnet()
+        .host("192.168.3.1")
+        .port(31114)
+        .successFlags("RETCODE = 0")
+        .postConnect(CommandConfigurerBuilder.newCommandConfigurer("LGI:OP=\"user\",PWD=\"pwd\";")
+                .successFlags("RETCODE = 0")
+                .next("REG NE:Name=\"ne1\";")
+                .successFlags("RETCODE = 0")
+                .build())
+        .preDisconnect(CommandConfigurerBuilder.newCommandConfigurer("UNREG NE:Name=\"ne1\";")
+                .successFlags("RETCODE = 0")
+                .next("LGO:OP=\"user\";")
+                .successFlags("RETCODE = 0")
+                .build())
+        .build();
+
+Connection connection = new TelnetConnectionFactory().createConnection(connectionConfigurer);
+----
+
+=== Default SHELL
+
+[source,java,subs="verbatim"]
+----
+ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.shell()
+        .charset("GBK")                             // echo charset of cmd.exe on a Chinese Windows
+        .successFlags(">")
+        .postConnect(CommandConfigurerBuilder.newCommandConfigurer("echo hello")
+                .enter("\r")                        // \r is required on Windows, see below
+                .successFlags(">")
+                .build())
+        .build();
+
+Connection connection = new ShellConnectionFactory().createConnection(connectionConfigurer);
+----
+
+=== powershell
+
+Set the `shellPath` property to `powershell.exe`; note that `powershell.exe` requires the `enter` key to be set to `\r` explicitly
+
+[source,java,subs="verbatim"]
+----
+ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.shell()
+        .shellPath("powershell.exe")
+        .charset("GBK")
+        .successFlags(">")
+        .postConnect(CommandConfigurerBuilder.newCommandConfigurer("echo hello")
+                .enter("\r")
+                .successFlags(">")
+                .build())
+        .build();
+----
+
+=== KeepAlive
+
+The keepAlive properties of `ConnectionConfigurer` implement keep alive for a connection,
+the principle is simple: when the user has not sent a command for `keepAliveInterval`, a `keepAliveCommand` is sent automatically, and the connection waits for `keepAliveWaitStr` with `keepAliveWaitTimeout` as the timeout
+
+Setting `keepAliveCommand` is enough to enable keep alive, the other three fields have default values,
+note that unlike a normal command no `enter` is appended to `keepAliveCommand`, so `\r` or `\n` has to be included explicitly in the command when it is needed
+
+[source,java,subs="verbatim"]
+----
+ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.ssh()
+        .host("192.168.3.1")
+        .username("root")
+        .password("password")
+        .successFlags("#")
+        .keepAliveCommand("pwd\n")                        // command sent while idle
+        .keepAliveWaitStr("#")                          // echo awaited for the keep alive command
+        .keepAliveInterval(60000)                       // idle time before sending, in milliseconds, 60000 by default
+        .keepAliveWaitTimeout(2000)                     // timeout of the awaited echo, in milliseconds, 2000 by default
+        .build();
+----
+
+NOTE: `keepAliveWaitStr` defaults to a string that never appears in the echo, so the keep alive result is only known when the wait times out; setting it to the real prompt of the device is recommended
+
+=== CompositeConnectionFactory
+
+`CompositeConnectionFactory` is the composite implementation of `ConnectionFactory`, it creates connections of different types
+
+[source,java,subs="verbatim"]
+----
+ConnectionFactory connectionFactory = new CompositeConnectionFactory(
+        new SshConnectionFactory(), new TelnetConnectionFactory(), new ShellConnectionFactory());
+Connection connection = connectionFactory.createConnection(connectionConfigurer);
+----
+
+=== Sending a command
+
+`sendCommand()` returns a `CommandResult` that holds whether the command succeeded, the command that failed and the echo
+
+[source,java,subs="verbatim"]
+----
+CommandConfigurer commandConfigurer = CommandConfigurerBuilder.newCommandConfigurer("df -h")
+        .successFlags("#")                                      // a match in the echo means success
+        .failFlags("No such file or directory")                 // a match in the echo means failure, optional
+        .timeoutMilliSeconds(5000)                              // timeout of the awaited flags, in milliseconds, 5000 by default
+        .build();
+
+CommandResult commandResult = connection.sendCommand(commandConfigurer);
+System.out.println("success = " + commandResult.isSuccess());
+System.out.println("echo = " + commandResult.getResult());
+if(!commandResult.isSuccess()) {
+    System.out.println("failed command = " + commandResult.getFailCommand());
 }
 ----
 
-== todo
+=== Paging with More
 
-* Calling `connection.sendCommand` from a temporary thread: once that thread ends, the connection can no longer send commands
-* Handling truncated characters in the echo, see the image below
+[source,java,subs="verbatim"]
+----
+CommandConfigurer commandConfigurer = CommandConfigurerBuilder.newCommandConfigurer("more bigfile")
+        .successFlags("#")
+        .moreFlag("--More--")                       // this flag in the echo means another page is available
+        .moreCommand(" ")                           // command sent repeatedly during the wait, a space by default
+        .build();
+----
 
-image::images/encode-decode.png[]
+NOTE: It is hard for `commons-connect` to send `moreCommand` only when `moreFlag` shows up like a human does, therefore `moreCommand` is sent repeatedly during the wait
+
+=== Command chains
+
+Configure the next command with `next()`, several commands share a single `sendCommand()` call, and the chain stops at the first fail flag without executing the remaining commands
+
+[source,java,subs="verbatim"]
+----
+CommandConfigurer commandConfigurer = CommandConfigurerBuilder.newCommandConfigurer("cd /opt")
+        .successFlags("#")
+        .next("ls")                                 // executed only after the previous command succeeded
+        .successFlags("#")
+        .next("cat app.log")
+        .successFlags("#")
+        .build();                                   // build() returns the first command
+----
+
+NOTE: A chain can also be assembled with `CommandConfigurer.setNext()`, in that case `CommandResult.getResult()` returns the echo of the whole chain
+
+=== commandFunction
+
+`commandFunction` builds a command from the echo of the previous command, which is its input
+
+[source,java,subs="verbatim"]
+----
+CommandConfigurer listFiles = CommandConfigurerBuilder.newCommandConfigurer("ls /opt")
+        .successFlags("#")
+        .build();
+CommandConfigurer catFirstFile = CommandConfigurerBuilder
+        .newCommandConfigurer(echo -> "cat /opt/" + echo.trim())        // <1>
+        .successFlags("#")
+        .build();
+listFiles.setNext(catFirstFile);
+
+connection.sendCommand(listFiles);
+----
+<1> Take the file name out of the echo of `ls` and build the next command from it

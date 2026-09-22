@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="389" height="285" viewBox="0 0 389 285" font-family="Arial,'Helvetica Neue','Microsoft YaHei',sans-serif">
+<rect x="0" y="0" width="389" height="285" fill="#FFFFFF"/>
+<rect x="16.5" y="16.5" width="357" height="252" rx="8" fill="none" stroke="#C0C0C0" stroke-width="5"/>
+<rect x="20.5" y="20.5" width="348" height="243.5" rx="5" fill="#FCFAD1" stroke="#FFC800" stroke-width="1"/>
+<path d="M21 47 L21 26 Q21 21 26 21 L362 21 Q367 21 367 26 L367 47 Z" fill="#D7D5AC"/>
+<rect x="25" y="24" width="20" height="19" rx="5" fill="#90CA6D"/>
+<text x="59" y="39.5" font-size="13" font-weight="bold" fill="#000000">CommandConfigurer</text>
+<text x="364" y="39" font-size="11" font-style="italic" fill="#7A7856" text-anchor="end">class</text>
+<rect x="29" y="54" width="8" height="204" fill="#FAB8B3"/>
+<line x1="21" y1="47" x2="367" y2="47" stroke="#5A5A5A" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="21" y1="72" x2="367" y2="72" stroke="#5A5A5A" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="21" y1="96" x2="367" y2="96" stroke="#5A5A5A" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="21" y1="120" x2="367" y2="120" stroke="#5A5A5A" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="21" y1="144" x2="367" y2="144" stroke="#5A5A5A" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="21" y1="168" x2="367" y2="168" stroke="#5A5A5A" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="21" y1="192" x2="367" y2="192" stroke="#5A5A5A" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="21" y1="216" x2="367" y2="216" stroke="#5A5A5A" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="21" y1="240" x2="367" y2="240" stroke="#5A5A5A" stroke-width="1" shape-rendering="crispEdges"/>
+<rect x="44" y="56" width="8" height="8" rx="2" fill="#90CA6D"/>
+<text x="59" y="64" font-size="13" fill="#000000">command</text>
+<text x="364" y="64" font-size="13" fill="#000000" text-anchor="end">String</text>
+<rect x="44" y="80" width="8" height="8" rx="2" fill="#90CA6D"/>
+<text x="59" y="88" font-size="13" fill="#000000">commandFunction</text>
+<text x="364" y="88" font-size="13" fill="#000000" text-anchor="end">Function&lt;String, String&gt;</text>
+<rect x="44" y="104" width="8" height="8" rx="2" fill="#90CA6D"/>
+<text x="59" y="112" font-size="13" fill="#000000">timeoutMilliSeconds</text>
+<text x="364" y="112" font-size="13" fill="#000000" text-anchor="end">int</text>
+<rect x="44" y="128" width="8" height="8" rx="2" fill="#90CA6D"/>
+<text x="59" y="136" font-size="13" fill="#000000">successFlags</text>
+<text x="364" y="136" font-size="13" fill="#000000" text-anchor="end">String[]</text>
+<rect x="44" y="152" width="8" height="8" rx="2" fill="#90CA6D"/>
+<text x="59" y="160" font-size="13" fill="#000000">failFlags</text>
+<text x="364" y="160" font-size="13" fill="#000000" text-anchor="end">String[]</text>
+<rect x="44" y="176" width="8" height="8" rx="2" fill="#90CA6D"/>
+<text x="59" y="184" font-size="13" fill="#000000">moreFlag</text>
+<text x="364" y="184" font-size="13" fill="#000000" text-anchor="end">String</text>
+<rect x="44" y="200" width="8" height="8" rx="2" fill="#90CA6D"/>
+<text x="59" y="208" font-size="13" fill="#000000">moreCommand</text>
+<text x="364" y="208" font-size="13" fill="#000000" text-anchor="end">String</text>
+<rect x="44" y="224" width="8" height="8" rx="2" fill="#90CA6D"/>
+<text x="59" y="232" font-size="13" fill="#000000">enter</text>
+<text x="364" y="232" font-size="13" fill="#000000" text-anchor="end">String</text>
+<rect x="44" y="248" width="8" height="8" rx="2" fill="#90CA6D"/>
+<text x="59" y="256" font-size="13" fill="#000000">next</text>
+<text x="364" y="256" font-size="13" fill="#000000" text-anchor="end">CommandConfigurer</text>
+</svg>

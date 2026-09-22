@@ -1,3 +1,4 @@
+:toc:
 = commons-connect
 
 link:README_en.adoc[English] | 中文
@@ -11,7 +12,7 @@ commons-connect 为连接设备和下发指令提供了简单易用的 API，主
 * 支持 SSH、TELNET、SHELL 三种连接类型，且可以自行扩展
 * 支持配置指令执行的成功/识别标识和超时时间
 * 支持类似--More--的分屏指令
-* 支持多条指令链式执行，有一条执行识别就终止
+* 支持多条指令链式执行，有一条执行失败就终止
 * 支持连接keep-alive
 
 === 要求
@@ -41,7 +42,8 @@ public class StartConnect {
                                                     .host("192.168.3.1")
                                                     .port(22)
                                                     .username("root")
-                                                    .password("")
+                                                    .password("pwd")
+                                                    .successFlags("#")
                                                     .build();                 // <1>
         Connection connection = new SshConnectionFactory().createConnection(connectionConfigurer);      // <2>
         CommandConfigurer commandConfigurer = CommandConfigurerBuilder.newCommandConfigurer("df -h")
@@ -65,268 +67,76 @@ public class StartConnect {
 <4> 下发指令，返回结果包含是否成功、失败的指令以及回显
 <5> 关闭连接，会先执行 `preDisconnect` 配置的登出指令
 
-== 架构
-
-image::images/architecture.png[]
-
 == API说明
 
-[[connection]]
 === Connection
 
-`Connection` 接口表示一个连接，目前有 `SshConnection`、`TelnetConnection`、`ShellConnection` 三个实现，主要包含如下方法
+image::images/Connection.svg[]
 
-[horizontal]
-`getPostConnectOutput()` :: 登录后的回显，例如 SSH 的 motd
-`sendCommand(CommandConfigurer)` :: 下发指令，返回 <<commandResult, CommandResult>>
-`isConnected()` :: 检查连接是否断开
-`close()` :: 关闭连接，会先执行 `preDisconnect` 配置的登出指令
+link:src/main/java/io/github/pxzxj/connect/Connection.java[`Connection`] 接口代表了与设备建立的连接，
+连接建立之后可以使用 `sendCommand(CommandConfigurer)` 方法向设备发送指令得到回显，连接使用完成之后必须使用 `close()` 方法关闭
 
+`isConnected()` 方法用于检查连接状态，`getPostConnectOutput()` 可以获取连接建立之后的一些回显，例如ssh的motd内容
 
-NOTE: `Connection` 继承了 `AutoCloseable` 接口，因此支持以try-with-resource的方式使用，这样连接会自动关闭
+根据连接类型的不同 `Connection` 接口有多个实现类，目前支持ssh、telnet、shell这三类，详情参考<<connection-type>>章节
 
 === ConnectionFactory
 
-创建连接的过程可能很复杂，因此使用工厂模式，`ConnectionFactory` 是一个接口，它的 `createConnection()` 方法用来创建连接 +
-`ConnectionFactory` 可能存在多个实现类，但只会使用 `supports()` 方法返回 true 的实现类来创建连接，伪代码如下
+image::images/ConnectionFactory.svg[]
 
-[source,java,subs="verbatim"]
-----
-List<ConnectionFactory> factories = ...
-Connection connection = null;
-for(ConnectionFactory factory : factories) {
-    if(factory.supports(connectionConfigurer)) {
-        connection = factory.createConnection(connectionConfigurer);
-        break;
-    }
-}
-----
-
-NOTE: `ConnectionFactory` 的设计借鉴了 `org.springframework.web.method.support.HandlerMethodArgumentResolver`
+link:src/main/java/io/github/pxzxj/connect/factory/ConnectionFactory.java[`ConnectionFactory`] 使用 `createConnection(ConnectionConfigurer)` 方法创建 `Connection`，
+使用 `supports(ConnectionConfigurer)` 方法实现策略模式，这一点参考了SpringMVC的 `HandlerMethodArgumentResolver`
 
 === ConnectionConfigurer
-`ConnectionConfigurer` 本质是一个普通的Java Bean，用于保存连接相关信息如IP端口用户名密码等，它的所有属性信息如下所示
 
+image::images/ConnectionConfigurer.svg[]
 
-|===
-|名称 |类型 |描述 |是否必填 |默认值
+link:src/main/java/io/github/pxzxj/connect/ConnectionConfigurer.java[`ConnectionConfigurer`] 封装了创建连接所需的信息，例如常见的 host、port、username、password等字段，
+不同连接类型所需的信息不同，详情参考<<usage>>，
+通常使用 link:src/main/java/io/github/pxzxj/connect/ConnectionConfigurerBuilder.java[`ConnectionConfigurerBuilder`] 来创建 `ConnectionConfigurer` 实例
 
-|type
-|String
-|连接类型，目前支持 ssh、telnet、shell 三类
-|是
-|
-
-|shellPath
-|String
-|SHELL 类型下启动的终端程序
-|否
-|Windows 为 cmd.exe，其它系统为 /bin/bash
-
-|host
-|String
-|连接目标地址
-|是
-|
-
-|port
-|int
-|连接端口
-|否
-|
-
-|charset
-|String
-|连接使用的编码
-|否
-|utf-8
-
-|username
-|String
-|登录使用的用户名
-|SSH 必填
-|
-
-|password
-|String
-|登录使用的密码
-|SSH 必填
-|
-
-|postConnect
-|<<commandConfigurer, CommandConfigurer>>
-|连接成功后下发的指令
-|否
-|
-
-|preDisconnect
-|<<commandConfigurer, CommandConfigurer>>
-|登出前执行的指令
-|否
-|
-
-|successFlags
-|String[]
-|连接成功标识符
-|否
-|
-
-|failFlags
-|String[]
-|连接失败标识符
-|否
-|
-
-|timeoutMilliSeconds
-|int
-|等待成功或失败标识的时间，单位毫秒
-|否
-|5000
-
-|keepAliveInterval
-|int
-|保活时间间隔，这段时间未操作就发送保活命令
-|否
-|60000
-
-|keepAliveCommand
-|String
-|保活命令
-|否
-|
-
-|keepAliveWaitStr
-|String
-|保活命令等待字符串
-|否
-|(!@#$%)
-
-|keepAliveWaitTimeout
-|int
-|保活命令等待时间
-|否
-|2000
-
-|extAttrs
-|Map<String, Object>
-|其它属性
-|否
-|
-|===
-
-NOTE: `ConnectionConfigurerBuilder` 是 `ConnectionConfigurer` 对应的构建器，使用它可以以更优雅的方式创建 `ConnectionConfigurer` 的实例
-
-[[commandConfigurer]]
 === CommandConfigurer
 
-调用<<connection, Connection>>的 `sendCommand(CommandConfigurer commandConfigurer)` 方法就可以下发指令，`CommandConfigurer` 是一个简单的Java Bean，保存了下发的指令信息，包含如下属性
+image::images/CommandConfigurer.svg[]
 
-|===
-|名称 |类型 |描述 |是否必填 |默认值
+link:src/main/java/io/github/pxzxj/connect/CommandConfigurer.java[`CommandConfigurer`] 用于描述执行的命令信息，`command` 代表命令内容，
+`successFlags` 和 `failFlags` 代表命令执行的成功标识和失败标识，当回显中出现 `successFlags` 或 `failFlags` 时立即返回并且将命令执行结果设置为成功或失败，
+如果 `successFlags` 或 `failFlags` 同时出现视为失败，
 
-|command
-|String
-|指令内容
-|与 commandFunction 二者必须有一个非空
-|
+当回显中始终未出现 `successFlags` 或 `failFlags` 时就执行到达 `timeoutMilliSeconds` 设置的时间，`timeoutMilliSeconds` 默认为5s，
+`successFlags` 和 `failFlags` 都没有设置时就意味着固定等待 `timeoutMilliSeconds` 后再返回
 
-|commandFunction
-|Function<String, String>
-|生成指令的函数，入参为前序指令的回显，出参为要执行的指令（Java 函数式接口 `Function<String, String>`）
-|与 command 二者必须有一个非空
-|
+`enter` 用于指定命令下发时的回车符号，默认为 `\n`，可以根据设备支持情况手动调整
 
-|timeoutMilliSeconds
-|int
-|超时时间
-|否
-|5000
+部分命令的回显会分屏展示，例如Linux上的 `more` 命令，此时可以通过设置 `moreFlag` 和 `moreCommand` 来实现自动翻屏，从而一次获取到所有回显
 
-|successFlags
-|String[]
-|成功标识
-|否
-|
+`commandFunction` 和 `next` 是为了命令链式执行而设计的，`next` 代表下一条要执行的命令，`commandFunction` 则是用于动态生成命令的场景，根据前面一条命令的回显生成后面一条命令，不过要注意只有前面的命令执行成功才会执行后面的命令
 
-|failFlags
-|String[]
-|失败标识，优先级比successFlags高
-|否
-|
+通常使用 link:src/main/java/io/github/pxzxj/connect/CommandConfigurerBuilder.java[`CommandConfigurerBuilder`] 来创建 `CommandConfigurer` 实例
 
-|moreFlag
-|String
-|分屏标识
-|否
-|
-
-|moreCommand
-|String
-|获取下一屏命令
-|否
-|空格
-
-|enter
-|String
-|回车符号(执行指令需要在输入指令末尾敲回车，Windows下连接本地shell时必须设为\r，详见「Windows下shell连接的enter」)
-|否
-|\n
-
-|next
-|CommandConfigurer
-|下一条指令(只有当前指令执行成功才会执行下一条)
-|否
-|
-|===
-
-NOTE: `CommandConfigurerBuilder` 是 `CommandConfigurer` 对应的构建器类，使用它可以更优雅地创建 `CommandConfigurer` 的实例
-
-[[commandResult]]
 === CommandResult
-`CommandResult` 是 `Connection` 的 `sendCommand(CommandConfigurer commandConfigurer)` 方法的返回值类型，它也是一个简单的Java Bean，保存了指令执行的结果，包含如下属性
 
-|===
-|名称 |类型 |描述
+image::images/CommandResult.svg[]
 
-|success
-|boolean
-|执行是否成功
+link:src/main/java/io/github/pxzxj/connect/CommandResult.java[`CommandResult`] 是 `sendCommand(CommandConfigurer)` 的返回值，通过 `isSuccess()` 判断是否执行成功、`getResult()` 取执行回显、`getFailCommand()` 取执行失败的那条命令
 
-|failCommand
-|CommandConfigurer
-|执行失败的命令
-
-|result
-|String
-|执行的回显
-
-|===
-
-
-
-
+[[connection-type]]
 == 连接类型
 
-目前支持的连接类型为 SSH、TELNET、SHELL，对应的 `ConnectionConfigurer.type` 属性值分别为 ssh、telnet、shell +
+`commons-connect` 默认支持ssh、telnet、shell这三种类型，用户也可以根据上面的API实现其他连接类型，
+shell在Windows下默认使用 `cmd.exe` ，在非Windows下使用 `/bin/bash`，
+用户也可以通过修改 `ConnectionConfigurer` 的 `shellPath` 来指定其他shell，例如Windows下还可以使用 `powershell.exe`
 
-[horizontal]
-SSH :: 使用 `SshConnectionFactory`，需要 `host`、`username`、`password` 三个属性，底层依赖 JSch
-TELNET :: 使用 `TelnetConnectionFactory`，只需要 `host` 和 `port`，底层依赖 commons-net
-SHELL :: 使用 `ShellConnectionFactory`，在本机启动一个终端进程，底层依赖 pty4j
+如下图所示，这三类连接底层仍然依赖其他库来实现，`commons-connect` 只是将其封装为更简洁易用的API
 
-使用Telnet连接设备时要注意用户名密码以及登录过程的判断都需要配置在 `ConnectionConfigurer.postConnect` 属性中，而不能使用 `username` 和 `password` 属性
+image::images/architecture.png[]
 
-shell是所有连接类型中最强大的，它模拟了操作系统的命令行终端，因此所有命令行下支持的操作都可以使用 `ShellConnection` 完成。不同操作系统打开终端的命令不同，
-默认情况下Windows使用 `cmd.exe`，其它操作系统使用 `/bin/bash`，也可以使用 `shellPath` 属性进行配置 +
-
-NOTE: SHELL 连接的回显编码取决于本机终端，例如中文 Windows 下 `cmd.exe` 输出的是 GBK，此时建议把 `charset` 显式设为 GBK，否则回显里的中文会乱码
-
-
+[[usage]]
 == 使用说明与示例
 
 === ssh密码登录
 
-使用 `username` 与 `password` 属性进行密码登录，连接由 `SshConnectionFactory` 创建
+使用 `username` 与 `password` 属性进行密码登录，端口号为 22 时 `port` 可以省略，`successFlags` 用于指定登录成功后回显的标识
 
 [source,java,subs="verbatim"]
 ----
@@ -336,9 +146,6 @@ ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.ssh()
         .username("root")
         .password("password")
         .successFlags("#")                                                          // 登录成功的标识
-        .postConnect(CommandConfigurerBuilder.newCommandConfigurer("cd /opt")       // 登录后立即执行的指令
-                .successFlags("#")
-                .build())
         .build();
 
 Connection connection = new SshConnectionFactory().createConnection(connectionConfigurer);
@@ -361,14 +168,9 @@ ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.ssh()
 Connection connection = new SshConnectionFactory().createConnection(connectionConfigurer);
 ----
 
-NOTE: 私钥必须是PEM格式（以 `-----BEGIN RSA PRIVATE KEY-----` 开头），`com.jcraft:jsch:0.1.55` 不支持OpenSSH的新格式（`-----BEGIN OPENSSH PRIVATE KEY-----`）。
-`ssh-keygen` 默认生成的是新格式，生成时需加上 `-m PEM` 参数，否则 `addIdentity` 会抛出 `invalid privatekey`
+=== telnet连接
 
-NOTE: 主机密钥校验通过 `strictHostKeyChecking` 与 `knownHosts` 属性配置
-
-=== telnet登录
-
-Telnet 登录只需要目标地址与端口
+部分网络设备基于telnet协议实现了自己的认证过程，在 `postConnect` 中指定认证过程，使用默认端口号23时可以省略 `port`
 
 [source,java,subs="verbatim"]
 ----
@@ -378,7 +180,13 @@ ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.telnet()
         .successFlags("RETCODE = 0")
         .postConnect(CommandConfigurerBuilder.newCommandConfigurer("LGI:OP=\"user\",PWD=\"pwd\";")
                 .successFlags("RETCODE = 0")
-                .failFlags("RETCODE = 1")
+                .next("REG NE:Name=\"ne1\";")
+                .successFlags("RETCODE = 0")
+                .build())
+        .preDisconnect(CommandConfigurerBuilder.newCommandConfigurer("UNREG NE:Name=\"ne1\";")
+                .successFlags("RETCODE = 0")
+                .next("LGO:OP=\"user\";")
+                .successFlags("RETCODE = 0")
                 .build())
         .build();
 
@@ -386,8 +194,6 @@ Connection connection = new TelnetConnectionFactory().createConnection(connectio
 ----
 
 === 默认shell登录
-
-不设置 `shellPath` 属性时，Windows 下启动 `cmd.exe`，其它操作系统启动 `/bin/bash --login`
 
 [source,java,subs="verbatim"]
 ----
@@ -405,7 +211,7 @@ Connection connection = new ShellConnectionFactory().createConnection(connection
 
 === powershell登录
 
-通过 `shellPath` 属性指定 `powershell.exe` 即可；注意 `powershell.exe` 必须把 `enter` 显式设为 `\r`，详见下文的「Windows下shell连接的enter」
+通过 `shellPath` 属性指定 `powershell.exe` 即可；注意 `powershell.exe` 必须把 `enter` 显式设为 `\r`
 
 [source,java,subs="verbatim"]
 ----
@@ -420,52 +226,13 @@ ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.shell()
         .build();
 ----
 
-NOTE: `shellPath` 会作为单个参数传递给终端进程，因此不能在这里附加启动参数
-
-=== Windows下shell连接的enter
-
-`CommandConfigurer.enter` 默认为换行（`\n`），这对SSH、Telnet这类字节流通道是正确的；但Windows下的本地shell运行在真实的pty上，
-`cmd.exe` 与 `powershell.exe` 收到 `\n` 后只会回显命令并不会执行，表现为下发的指令没有反应，因此连接本地shell时必须把 `enter` 显式设为回车（`\r`） +
-
-也不要使用 `\r\n`：`cmd.exe` 可以正常处理，但 `powershell.exe` 会把 `\r` 之后的 `\n` 当作未结束的行，进入续行状态（打印 `>> `）并吞掉后续指令 +
-
-[source,java,subs="verbatim"]
-----
-// SSH、Telnet使用默认的\n即可
-ConnectionConfigurer sshConfigurer = ConnectionConfigurerBuilder.ssh()
-        .host("192.168.3.1")
-        .username("root")
-        .password("password")
-        .successFlags("#")
-        .build();
-
-// Windows下的本地shell必须显式指定\r
-ConnectionConfigurer cmdConfigurer = ConnectionConfigurerBuilder.shell()
-        .shellPath("cmd.exe")
-        .postConnect(CommandConfigurerBuilder.newCommandConfigurer("echo hello")
-                .enter("\r")
-                .successFlags(">")
-                .build())
-        .build();
-
-// powershell.exe同理，enter同样必须是\r
-ConnectionConfigurer powershellConfigurer = ConnectionConfigurerBuilder.shell()
-        .shellPath("powershell.exe")
-        .postConnect(CommandConfigurerBuilder.newCommandConfigurer("echo hello")
-                .enter("\r")
-                .successFlags(">")
-                .build())
-        .build();
-----
-
-NOTE: 使用链式指令时 `next` 不会继承上一条指令的 `enter`，每一条指令都需要单独设置
-
-NOTE: 使用JSON配置时同样需要在每个指令中设置 `enter`
-
 === KeepAlive
 
-连接空闲时间超过 `keepAliveInterval` 后会发送 `keepAliveCommand`，并等待回显中出现 `keepAliveWaitStr`，等待回显的超时时间为 `keepAliveWaitTimeout`，
-因此可以通过保活指令的执行结果判断连接是否正常
+`ConnectionConfigurer` 中的 keepAlive 相关配置用于实现连接的keepAlive，
+原理也很简单，`keepAliveInterval` 时间内用户没有发送指令时就自动发送一个指令 `keepAliveCommand`，并等待 `keepAliveWaitStr`，等待的超时时间为 `keepAliveWaitTimeout`
+
+通过设置 `keepAliveCommand` 就可以启动keepAlive机制，其他三个字段都有默认值，
+要注意的是发送 `keepAliveCommand` 时不会像普通命令那样自动添加 `enter`，因此如果需要发送 `\r` 或者 `\n` 需要显式包含在 `keepAliveCommand` 中
 
 [source,java,subs="verbatim"]
 ----
@@ -474,21 +241,18 @@ ConnectionConfigurer connectionConfigurer = ConnectionConfigurerBuilder.ssh()
         .username("root")
         .password("password")
         .successFlags("#")
-        .keepAliveCommand("pwd")                        // 空闲时发送的保活指令
+        .keepAliveCommand("pwd\n")                        // 空闲时发送的保活指令
         .keepAliveWaitStr("#")                          // 保活指令等待的回显
         .keepAliveInterval(60000)                       // 空闲多久后发送，单位毫秒，默认60000
         .keepAliveWaitTimeout(2000)                     // 等待回显的超时时间，单位毫秒，默认2000
         .build();
 ----
 
-NOTE: 不设置 `keepAliveCommand` 时不会启动保活线程
-
 NOTE: `keepAliveWaitStr` 默认为一个不会出现在回显中的字符串，此时只能等到超时才知道保活结果，建议设置为设备实际的提示符
 
-[[compositeConnectionFactory]]
 === CompositeConnectionFactory
 
-将 `ConnectionFactory` 声明为 `Bean` 后可以在不同的Service中直接注入，`CompositeConnectionFactory` 是 `ConnectionFactory` 的组合模式的实现，使用 `CompositeConnectionFactory` 就无需再遍历所有 `ConnectionFactory` 的 `Bean`
+`CompositeConnectionFactory` 是 `ConnectionFactory` 的组合模式实现，使用它可以创建不同类型的 `Connection`
 
 [source,java,subs="verbatim"]
 ----
@@ -496,8 +260,6 @@ ConnectionFactory connectionFactory = new CompositeConnectionFactory(
         new SshConnectionFactory(), new TelnetConnectionFactory(), new ShellConnectionFactory());
 Connection connection = connectionFactory.createConnection(connectionConfigurer);
 ----
-
-NOTE: 没有 `supports()` 返回 true 的实现类时会抛出 `IllegalArgumentException`
 
 === 下发指令
 
@@ -521,16 +283,16 @@ if(!commandResult.isSuccess()) {
 
 === More分屏
 
-moreCommand会持续发送，因为在实践中发现检查到--More--再发送下一屏指令不能有预期效果
-
 [source,java,subs="verbatim"]
 ----
-CommandConfigurer commandConfigurer = CommandConfigurerBuilder.newCommandConfigurer("cat bigfile")
+CommandConfigurer commandConfigurer = CommandConfigurerBuilder.newCommandConfigurer("more bigfile")
         .successFlags("#")
         .moreFlag("--More--")                       // 回显中出现该标识表示还有下一屏
         .moreCommand(" ")                           // 等待期间持续发送的指令，默认空格
         .build();
 ----
+
+NOTE: `commons-connect` 很难实现像手动发送命令那样看到 `moreFlag` 时发送 `moreCommand`，因此目前采用的是持续发送 `moreCommand` 的方式
 
 === 多条指令
 
@@ -546,8 +308,6 @@ CommandConfigurer commandConfigurer = CommandConfigurerBuilder.newCommandConfigu
         .successFlags("#")
         .build();                                   // build()返回的是第一条指令
 ----
-
-NOTE: `next()` 不会继承上一条指令的配置，每一条指令都要单独配置成功标识、超时时间以及「Windows下shell连接的enter」中提到的 `enter` 等属性
 
 NOTE: 也可以通过 `CommandConfigurer.setNext()` 组装指令链，此时 `CommandResult.getResult()` 是整条指令链的回显
 
@@ -569,54 +329,6 @@ listFiles.setNext(catFirstFile);
 connection.sendCommand(listFiles);
 ----
 <1> 从 `ls` 的回显中取出文件名，拼出下一条指令
-
-
-== 最佳实践
-
-=== 登录过程配置化
-commons-connect将所有的登录过程都保存在 `ConnectionConfigurer` 对象中，JSON序列化技术可以实现 `ConnectionConfigurer` 对象与JSON字符串的相互转换，因此可以使用JSON字符串非常直观地表示设备的登录过程，将JSON配置保存到数据库中后如果需要调整登录过程只需要修改对应数据即可
-
-一个最简单的登录过程如下所示，可以很清楚的看出登录的设备信息，用户信息，成功标识
-[source,json,subs="verbatim"]
-----
-{
-  "type" : "ssh",
-  "host" : "1.1.1.1",
-  "port" : 22,
-  "username" : "root",
-  "password" : "password",
-  "successFlags" : ["#"]
-}
-----
-
-将设备信息固化到JSON配置中意味这每台设备都需要写一个单独的JSON配置，对于登录过程相同，仅有设备信息不同的设备可以使用相同的JSON配置，需要根据设备信息修改的数据使用占位符表示，如下面示例所示，${''}格式的
-都是占位符数据，实际使用时根据连接设备的信息替换这些数据
-[source,json,subs="verbatim"]
-----
-{
- "type" : "telnet",
- "host" : "${'host'}",
- "port" : 31114,
- "postConnect" : {
-  "command" : "LGI:OP=\"${'device_username'}\",PWD=\"${'device_password'}\";",
-  "successFlags" : ["RETCODE = 0"],
-  "next" : {
-  	"command" : "REG NE:Name=\"${'name'}\";",
-  	"successFlags" : ["RETCODE = 0"]
-  }
- },
- "preDisconnect" : {
- 	"command" : "UNREG NE:Name=\"${'name'}\";",
- 	"successFlags" : ["RETCODE = 0"],
- 	"next" : {
- 		"command" : "LGO:OP=\"${'device_username'}\";",
- 		"successFlags" : ["RETCODE = 0"]
- 	}
- }
-}
-----
-
-
 
 == todo
 

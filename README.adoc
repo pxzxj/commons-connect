@@ -1,6 +1,6 @@
 = commons-connect
 
-link:README.adoc[中文] | English
+link:README_zh.adoc[中文] | English
 
 == Introduction
 

@@ -1,6 +1,6 @@
 = commons-connect
 
-link:README_en.adoc[English] | 中文
+link:README.adoc[English] | 中文
 
 == 简介
 
